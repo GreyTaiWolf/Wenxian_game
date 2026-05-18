@@ -5,6 +5,7 @@ export type SkillCategory = "cultivator" | "beast";
 export type TargetType = "enemySingle" | "enemyAll" | "allySingle" | "allyAll" | "self";
 export type EffectType = "damage" | "heal" | "shield" | "reduceDamage" | "restoreSpirit" | "control";
 export type EquipmentSlotId = "weapon" | "robe" | "crown" | "shoes" | "accessory" | "treasure";
+export type ItemGrade = "common" | "fine" | "rare" | "mystic" | "earth" | "heaven";
 
 export interface ItemAmount {
   itemId: string;
@@ -70,6 +71,7 @@ export interface ItemConfig {
   id: string;
   name: string;
   category: "currency" | "pill" | "material" | "quest" | "equipment";
+  grade: ItemGrade;
   description: string;
   price?: number;
   combatHeal?: number;
@@ -120,6 +122,12 @@ export interface WorldState {
   sceneMessage: string;
 }
 
+export interface CaveState {
+  meditationStartedAt: string | null;
+  spiritArrayLevel: number;
+  totalMeditationMinutes: number;
+}
+
 export interface CombatActor extends Stats {
   id: string;
   name: string;
@@ -156,6 +164,7 @@ export interface GameState {
   player: PlayerState;
   inventory: InventoryState;
   world: WorldState;
+  cave: CaveState;
   combat?: CombatState;
 }
 

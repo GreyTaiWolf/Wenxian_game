@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { getItem } from "../data/items";
+import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getSkill } from "../data/skills";
 import { performEscape, performPlayerBasic, performPlayerSkill, performUseItem } from "../game/combatEngine";
 import { defaultCombatLoadout } from "../game/state";
-import type { CombatActor, CombatState, GameState, SkillConfig } from "../types";
+import type { CombatActor, CombatState, GameState, ItemConfig, SkillConfig } from "../types";
 import { GameIcon, type GameIconName } from "./GameIcon";
 
 type LogNameMeta = {
@@ -27,6 +27,8 @@ export default function CombatView({ game, onChange }: { game: GameState; onChan
   const loadout = game.player.combatLoadout ?? defaultCombatLoadout;
   const carriedSkills = loadout.skillIds.map((skillId) => getPlayerSkillSlot(skillId, player));
   const divineSkill = getPlayerSkillSlot(loadout.divineSkillId, player);
+  const equippedTreasureId = game.inventory.equipment.treasure;
+  const equippedTreasure = equippedTreasureId ? getItem(equippedTreasureId) : null;
   const pill = loadout.pillItemId ? getItem(loadout.pillItemId) : null;
   const pillAmount = loadout.pillItemId ? game.inventory.items[loadout.pillItemId] ?? 0 : 0;
   const targetPool = selectedSkill ? getTargetPool(combat.allies, combat.enemies, selectedSkill.targetType) : [];
@@ -53,7 +55,7 @@ export default function CombatView({ game, onChange }: { game: GameState; onChan
 
   function renderSkillButton(skill: SkillConfig | null, label: string) {
     const disabled = !canUseSkill(skill, player, playerTurn);
-    const iconName: GameIconName = label === "神通" ? "equipment-treasure" : "module-cultivation";
+    const iconName: GameIconName = label === "神通" ? "equipment-treasure" : label.startsWith("武技") ? "combat" : "module-cultivation";
     return (
       <button
         className={`combat-slot ${skill ? "" : "empty"}`}
@@ -75,6 +77,32 @@ export default function CombatView({ game, onChange }: { game: GameState; onChan
         </span>
         <strong>{skill?.name ?? "空槽"}</strong>
         <small>{skill ? (skill.spiritCost ? `${skill.spiritCost} 灵力` : "无消耗") : "未携带"}</small>
+      </button>
+    );
+  }
+
+  function renderEmptyLoadoutButton(label: string, description: string, iconName: GameIconName) {
+    return (
+      <button className="combat-slot empty" disabled>
+        <span>
+          <GameIcon name={iconName} size={15} />
+          {label}
+        </span>
+        <strong>空槽</strong>
+        <small>{description}</small>
+      </button>
+    );
+  }
+
+  function renderTreasureButton() {
+    return (
+      <button className={`combat-slot utility ${equippedTreasure ? `grade-card grade-${equippedTreasure.grade}` : "empty"}`} disabled>
+        <span>
+          <GameIcon name="equipment-treasure" size={15} />
+          法宝
+        </span>
+        <strong className={equippedTreasure ? getGradeNameClass(equippedTreasure) : ""}>{equippedTreasure ? formatItemName(equippedTreasure) : "空槽"}</strong>
+        <small>{equippedTreasure ? "暂未激活战斗效果" : "未装备"}</small>
       </button>
     );
   }
@@ -145,26 +173,39 @@ export default function CombatView({ game, onChange }: { game: GameState; onChan
           </div>
         </div>
       ) : (
-        <div className="combat-loadout-grid">
-          {renderSkillButton(carriedSkills[0], "技能一")}
-          {renderSkillButton(carriedSkills[1], "技能二")}
-          {renderSkillButton(divineSkill, "神通")}
-          <button
-            className={`combat-slot ${pill?.combatHeal ? "" : "empty"}`}
-            disabled={!playerTurn || !pill?.combatHeal || pillAmount <= 0}
-            onClick={() => loadout.pillItemId && onChange(performUseItem(game, loadout.pillItemId))}
-          >
-            <span>
-              <GameIcon name="item-pill" size={15} />
-              丹药
-            </span>
-            <strong>{pill?.name ?? "空槽"}</strong>
-            <small>{pill?.combatHeal ? `x${pillAmount} · 气血 +${pill.combatHeal}` : "未携带"}</small>
-          </button>
+        <div className="combat-loadout-panel">
+          <div className="combat-martial-row">
+            {renderSkillButton(carriedSkills[0], "武技一")}
+            {renderSkillButton(carriedSkills[1], "武技二")}
+          </div>
+          <div className="combat-method-row">
+            {renderEmptyLoadoutButton("功法一", "未装配", "system-library")}
+            {renderEmptyLoadoutButton("功法二", "未装配", "system-library")}
+          </div>
+          <div className="combat-artifact-row">
+            {renderSkillButton(divineSkill, "神通")}
+            {renderTreasureButton()}
+            <button
+              className={`combat-slot utility ${pill?.combatHeal ? `grade-card grade-${pill.grade}` : "empty"}`}
+              disabled={!playerTurn || !pill?.combatHeal || pillAmount <= 0}
+              onClick={() => loadout.pillItemId && onChange(performUseItem(game, loadout.pillItemId))}
+            >
+              <span>
+                <GameIcon name="item-pill" size={15} />
+                丹药
+              </span>
+              <strong className={pill ? getGradeNameClass(pill) : ""}>{pill ? formatItemName(pill) : "空槽"}</strong>
+              <small>{pill?.combatHeal ? `x${pillAmount} · 气血 +${pill.combatHeal}` : "未携带"}</small>
+            </button>
+          </div>
         </div>
       )}
     </section>
   );
+}
+
+function getGradeNameClass(item: ItemConfig): string {
+  return `grade-name grade-${item.grade}${shouldEmphasizeItemGrade(item.grade) ? " strong" : ""}`;
 }
 
 function getPlayerSkillSlot(skillId: string | null, player?: CombatActor): SkillConfig | null {

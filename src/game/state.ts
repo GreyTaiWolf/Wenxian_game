@@ -1,6 +1,6 @@
-import { getItem } from "../data/items";
+import { formatItemName, getItem, normalizeItemId } from "../data/items";
 import { getNextRealm, getRealm } from "../data/progression";
-import type { ActorKind, CombatLoadout, Cost, GameState, ItemAmount, PlayerState, Stats, TeamMember, UnlockKey } from "../types";
+import type { ActorKind, CaveState, CombatLoadout, Cost, GameState, ItemAmount, PlayerState, Stats, TeamMember, UnlockKey } from "../types";
 
 export const starterStats: Stats = {
   maxHp: 220,
@@ -48,6 +48,14 @@ export const defaultCombatLoadout: CombatLoadout = {
   pillItemId: "healing_powder",
 };
 
+export function createDefaultCaveState(): CaveState {
+  return {
+    meditationStartedAt: null,
+    spiritArrayLevel: 0,
+    totalMeditationMinutes: 0,
+  };
+}
+
 export function normalizeCombatLoadout(player: Partial<PlayerState> | undefined): CombatLoadout {
   const learnedSkills = new Set(player?.skillIds ?? []);
   const rawLoadout = player?.combatLoadout;
@@ -68,7 +76,7 @@ export function normalizeCombatLoadout(player: Partial<PlayerState> | undefined)
   return {
     skillIds: [skillIds[0], skillIds[1]],
     divineSkillId,
-    pillItemId: rawLoadout?.pillItemId ?? defaultCombatLoadout.pillItemId,
+    pillItemId: rawLoadout?.pillItemId ? normalizeItemId(rawLoadout.pillItemId) : "healing_powder",
   };
 }
 
@@ -117,6 +125,7 @@ export function createNewGame(name: string): GameState {
       logs: ["你在青云城外醒来，远处钟声如水，仙途由此开始。"],
       sceneMessage: "选择城中地点，或先去修炼聚气。",
     },
+    cave: createDefaultCaveState(),
   };
 }
 
@@ -134,7 +143,8 @@ export function appendLog(game: GameState, message: string): GameState {
 export function addItems(game: GameState, items: ItemAmount[] = []): GameState {
   const nextItems = { ...game.inventory.items };
   items.forEach((item) => {
-    nextItems[item.itemId] = (nextItems[item.itemId] ?? 0) + item.amount;
+    const itemId = normalizeItemId(item.itemId);
+    nextItems[itemId] = (nextItems[itemId] ?? 0) + item.amount;
   });
   return {
     ...game,
@@ -148,7 +158,8 @@ export function addItems(game: GameState, items: ItemAmount[] = []): GameState {
 export function removeItems(game: GameState, items: ItemAmount[] = []): GameState {
   const nextItems = { ...game.inventory.items };
   items.forEach((item) => {
-    nextItems[item.itemId] = Math.max(0, (nextItems[item.itemId] ?? 0) - item.amount);
+    const itemId = normalizeItemId(item.itemId);
+    nextItems[itemId] = Math.max(0, (nextItems[itemId] ?? 0) - item.amount);
   });
   return {
     ...game,
@@ -160,7 +171,7 @@ export function removeItems(game: GameState, items: ItemAmount[] = []): GameStat
 }
 
 export function hasItems(game: GameState, items: ItemAmount[] = []): boolean {
-  return items.every((item) => (game.inventory.items[item.itemId] ?? 0) >= item.amount);
+  return items.every((item) => (game.inventory.items[normalizeItemId(item.itemId)] ?? 0) >= item.amount);
 }
 
 export function canAffordCost(game: GameState, cost: Cost): boolean {
@@ -323,8 +334,9 @@ export function joinSect(game: GameState): GameState {
   if (game.world.sectJoined) {
     return appendLog(game, "你已是青云宗外门弟子。");
   }
-  const hasToken = (game.inventory.items.qingyun_token ?? 0) > 0;
-  const gameWithToken = hasToken ? game : addItems(game, [{ itemId: "qingyun_token", amount: 1 }]);
+  const tokenId = "qingyun_token";
+  const hasToken = (game.inventory.items[tokenId] ?? 0) > 0;
+  const gameWithToken = hasToken ? game : addItems(game, [{ itemId: tokenId, amount: 1 }]);
   return appendLog(
     {
       ...gameWithToken,
@@ -348,6 +360,6 @@ export function describeCost(cost: Cost): string {
   if (cost.spiritStones) {
     parts.push(`灵石 ${cost.spiritStones}`);
   }
-  cost.items?.forEach((item) => parts.push(`${getItem(item.itemId).name} x${item.amount}`));
+  cost.items?.forEach((item) => parts.push(`${formatItemName(getItem(item.itemId))} x${item.amount}`));
   return parts.length ? parts.join("，") : "无";
 }

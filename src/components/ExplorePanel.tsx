@@ -1,11 +1,11 @@
 import { useState, type CSSProperties, type PointerEvent } from "react";
-import { getItem } from "../data/items";
+import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
 import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type SceneAction } from "../data/world";
 import { getWorldProvince, worldProvinces, type WorldProvince } from "../data/worldMap";
 import { beginCombat, grantGatherReward, grantTreasure } from "../game/combatEngine";
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
-import type { GameState, QuestState } from "../types";
+import type { GameState, ItemConfig, QuestState } from "../types";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
 
 const worldMapSrc = new URL("../../World_map.png", import.meta.url).href;
@@ -591,7 +591,7 @@ function Shop({ game, onChange }: { game: GameState; onChange: (game: GameState)
       },
       [{ itemId, amount: 1 }],
     );
-    onChange(appendLog(bought, `购得 ${getItem(itemId).name} x1。`));
+    onChange(appendLog(bought, `购得 ${formatItemName(itemId)} x1。`));
   }
 
   return (
@@ -603,17 +603,24 @@ function Shop({ game, onChange }: { game: GameState; onChange: (game: GameState)
         </h2>
         <span>灵石 {game.player.spiritStones}</span>
       </div>
-      {visibleShopItems.map((shopItem) => (
-        <div className="item-row" key={shopItem.itemId}>
-          <div>
-            <strong>{getItem(shopItem.itemId).name}</strong>
-            <small>{getItem(shopItem.itemId).description}</small>
+      {visibleShopItems.map((shopItem) => {
+        const item = getItem(shopItem.itemId);
+        return (
+          <div className={`item-row grade-card grade-${item.grade}`} key={shopItem.itemId}>
+            <div>
+              <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
+              <small>{item.description}</small>
+            </div>
+            <button onClick={() => buy(shopItem.itemId, shopItem.price)}>{shopItem.price} 灵石</button>
           </div>
-          <button onClick={() => buy(shopItem.itemId, shopItem.price)}>{shopItem.price} 灵石</button>
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
+}
+
+function getGradeNameClass(item: ItemConfig): string {
+  return `grade-name grade-${item.grade}${shouldEmphasizeItemGrade(item.grade) ? " strong" : ""}`;
 }
 
 function TaskBoard({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {

@@ -1,5 +1,5 @@
 import { getEnemyGroup, getEnemyTemplate } from "../data/enemies";
-import { getItem } from "../data/items";
+import { formatItemName, getItem, normalizeItemId } from "../data/items";
 import { getSkill } from "../data/skills";
 import type { CombatActor, CombatState, GameState, SkillConfig, TargetType } from "../types";
 import { chooseAiAction } from "./ai";
@@ -381,8 +381,9 @@ export function performUseItem(game: GameState, itemId: string): GameState {
     return game;
   }
   const actor = getCurrentActor(game.combat);
-  const item = getItem(itemId);
-  if (actor?.kind !== "player" || !item.combatHeal || (game.inventory.items[itemId] ?? 0) <= 0) {
+  const normalizedItemId = normalizeItemId(itemId);
+  const item = getItem(normalizedItemId);
+  if (actor?.kind !== "player" || !item.combatHeal || (game.inventory.items[normalizedItemId] ?? 0) <= 0) {
     return game;
   }
   const withItemSpent = {
@@ -391,7 +392,7 @@ export function performUseItem(game: GameState, itemId: string): GameState {
       ...game.inventory,
       items: {
         ...game.inventory.items,
-        [itemId]: game.inventory.items[itemId] - 1,
+        [normalizedItemId]: game.inventory.items[normalizedItemId] - 1,
       },
     },
   };
@@ -401,7 +402,7 @@ export function performUseItem(game: GameState, itemId: string): GameState {
   }));
   const combat = advanceTurn({
     ...healed,
-    logs: [`${actor.name} 服下 ${item.name}，气血 +${item.combatHeal}。`, ...healed.logs].slice(0, 16),
+    logs: [`${actor.name} 服下 ${formatItemName(item)}，气血 +${item.combatHeal}。`, ...healed.logs].slice(0, 16),
   });
   return advanceUntilPlayer({ ...withItemSpent, combat }, combat);
 }

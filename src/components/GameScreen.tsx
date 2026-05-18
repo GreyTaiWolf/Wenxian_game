@@ -46,7 +46,7 @@ export default function GameScreen({
             ) : null}
             {activeModule === "inventory" ? <InventoryPanel game={game} onChange={onChange} /> : null}
             {activeModule === "explore" ? <ExplorePanel game={game} onChange={onChange} /> : null}
-            {activeModule === "cave" ? <CavePanel game={game} /> : null}
+            {activeModule === "cave" ? <CavePanel game={game} onChange={onChange} /> : null}
             {activeModule === "sect" ? <SectPanel game={game} /> : null}
           </>
         )}

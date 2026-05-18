@@ -1,4 +1,6 @@
 import type { CombatActor, CombatState, GameState, RootSave, SaveSlot, SettingsState } from "../types";
+import { normalizeInventoryItemId, normalizeItemId } from "../data/items";
+import { normalizeCaveState } from "./cave";
 import { normalizeEquipmentSlots } from "./equipment";
 import { createNewGame, getDefaultDodge, normalizeCombatLoadout, normalizeStats } from "./state";
 
@@ -92,8 +94,10 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
       combat: slot.game.combat ? normalizeCombat(slot.game.combat) : undefined,
       inventory: {
         ...slot.game.inventory,
+        items: normalizeInventoryItems(slot.game.inventory?.items),
         equipment: normalizeEquipmentSlots(slot.game.inventory?.equipment),
       },
+      cave: normalizeCaveState(slot.game.cave),
     },
   };
 }
@@ -103,6 +107,10 @@ function normalizeCombat(combat: CombatState): CombatState {
     ...combat,
     allies: combat.allies.map(normalizeCombatActor),
     enemies: combat.enemies.map(normalizeCombatActor),
+    rewards: {
+      ...combat.rewards,
+      items: combat.rewards.items.map((item) => ({ ...item, itemId: normalizeItemId(item.itemId) })),
+    },
   };
 }
 
@@ -111,4 +119,23 @@ function normalizeCombatActor(actor: CombatActor): CombatActor {
     ...actor,
     ...normalizeStats(actor, { dodge: getDefaultDodge(actor.kind) }),
   };
+}
+
+function normalizeInventoryItems(rawItems: Record<string, number> | undefined): Record<string, number> {
+  const source = rawItems ?? {};
+  const normalized: Record<string, number> = {};
+
+  Object.entries(source).forEach(([rawItemId, rawAmount]) => {
+    const amount = Number(rawAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+    const itemId = normalizeInventoryItemId(rawItemId);
+    if (!itemId) {
+      return;
+    }
+    normalized[itemId] = (normalized[itemId] ?? 0) + amount;
+  });
+
+  return normalized;
 }

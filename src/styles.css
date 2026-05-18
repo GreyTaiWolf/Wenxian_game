@@ -23,6 +23,12 @@
   --danger: #f87171;
   --spirit: #38bdf8;
   --success: #34d399;
+  --grade-common: #aeb7c4;
+  --grade-fine: #55d68a;
+  --grade-rare: #60a5fa;
+  --grade-mystic: #c084fc;
+  --grade-earth: #f6c453;
+  --grade-heaven: #ff6b6b;
   --jade: var(--primary);
   --jade-strong: var(--primary-strong);
   --red: var(--danger);
@@ -578,6 +584,14 @@ small {
     0 12px 28px rgba(0, 0, 0, 0.26);
 }
 
+.qi-button.ready {
+  border-color: rgba(217, 184, 108, 0.88);
+  box-shadow:
+    0 0 0 1px rgba(217, 184, 108, 0.22) inset,
+    0 0 28px rgba(217, 184, 108, 0.28),
+    0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
 .qi-button::before {
   content: "";
   position: absolute;
@@ -597,21 +611,44 @@ small {
   pointer-events: none;
 }
 
-.qi-button-fill::before {
+.qi-button-fill::before,
+.qi-button-fill::after {
   content: "";
   position: absolute;
+  left: 50%;
+  height: var(--qi-progress, 0%);
+  min-height: 0;
+  transition: height 220ms ease;
+}
+
+.qi-button-fill::before {
   right: 0;
   bottom: 0;
   left: 0;
-  height: var(--qi-progress, 0%);
-  border-radius: 999px 999px 0 0;
+  border-radius: 0 0 999px 999px;
   background:
     linear-gradient(180deg, rgba(159, 252, 240, 0.72), rgba(45, 212, 191, 0.44)),
     radial-gradient(circle at 34% 18%, rgba(255, 255, 255, 0.34), transparent 24%);
   box-shadow:
     0 -10px 24px rgba(94, 234, 212, 0.3),
     0 0 22px rgba(94, 234, 212, 0.16) inset;
-  transition: height 220ms ease;
+}
+
+.qi-button-fill::after {
+  bottom: calc(var(--qi-progress, 0%) - 9px);
+  width: 210%;
+  height: 18px;
+  min-height: 18px;
+  border-radius: 45%;
+  background:
+    radial-gradient(ellipse at 14% 55%, rgba(245, 255, 251, 0.62) 0 12%, transparent 13%),
+    radial-gradient(ellipse at 38% 45%, rgba(159, 252, 240, 0.7) 0 14%, transparent 15%),
+    radial-gradient(ellipse at 62% 58%, rgba(255, 255, 255, 0.5) 0 12%, transparent 13%),
+    radial-gradient(ellipse at 86% 46%, rgba(94, 234, 212, 0.58) 0 14%, transparent 15%),
+    linear-gradient(180deg, rgba(245, 255, 251, 0.44), rgba(94, 234, 212, 0.16));
+  opacity: 0.82;
+  transform: translateX(-50%);
+  animation: qi-wave-flow 3.2s linear infinite;
 }
 
 .qi-button:not(:disabled):hover {
@@ -663,6 +700,16 @@ small {
   }
 }
 
+@keyframes qi-wave-flow {
+  0% {
+    transform: translateX(-54%) rotate(0.001deg);
+  }
+
+  100% {
+    transform: translateX(-46%) rotate(0.001deg);
+  }
+}
+
 .mini-stats {
   display: grid;
   grid-template-columns: 1fr;
@@ -682,6 +729,235 @@ small {
 
 .breakthrough-inline > span {
   min-width: 0;
+}
+
+.breakthrough-inline.status-only {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.breakthrough-prep-panel {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(94, 234, 212, 0.26);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(94, 234, 212, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 13, 20, 0.94));
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.3);
+  text-align: left;
+}
+
+.breakthrough-prep-header,
+.breakthrough-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.breakthrough-prep-header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.breakthrough-prep-header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.breakthrough-prep-header strong {
+  overflow: hidden;
+  color: #fff7d6;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakthrough-prep-header .ghost-button,
+.breakthrough-picker-head .ghost-button {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.breakthrough-prep-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.breakthrough-prep-meta span {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(11, 17, 27, 0.46);
+}
+
+.breakthrough-requirements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.breakthrough-requirement {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(11, 17, 27, 0.5);
+  font-size: 12px;
+}
+
+.breakthrough-requirement span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakthrough-requirement strong {
+  color: #fff;
+  white-space: nowrap;
+}
+
+.breakthrough-requirement.ok strong {
+  color: var(--primary-strong);
+}
+
+.breakthrough-requirement.missing {
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+.breakthrough-requirement.missing strong {
+  color: #fecaca;
+}
+
+.breakthrough-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.breakthrough-slot {
+  position: relative;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  min-height: 68px;
+  min-width: 0;
+  padding: 16px 4px 7px;
+  border-style: dashed;
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(11, 17, 27, 0.54);
+  text-align: center;
+}
+
+.breakthrough-slot.filled {
+  border-style: solid;
+  border-color: rgba(94, 234, 212, 0.5);
+  background: rgba(20, 184, 166, 0.12);
+}
+
+.breakthrough-slot small {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  color: rgba(148, 163, 184, 0.76);
+  font-size: 10px;
+}
+
+.breakthrough-slot strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakthrough-slot span {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakthrough-picker {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  border-radius: 10px;
+  background: rgba(5, 10, 16, 0.72);
+}
+
+.breakthrough-picker-head strong {
+  color: #dffcf6;
+  font-size: 13px;
+}
+
+.breakthrough-picker-list {
+  display: grid;
+  gap: 6px;
+}
+
+.breakthrough-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.breakthrough-picker-item strong,
+.breakthrough-picker-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakthrough-picker-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.breakthrough-warning,
+.empty-state {
+  margin: 0;
+  color: #ffd38a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.empty-state {
+  color: var(--muted);
+}
+
+.breakthrough-confirm {
+  width: 100%;
+  justify-content: center;
 }
 
 .log-panel {
@@ -729,6 +1005,26 @@ small {
 .inventory-panel {
   display: grid;
   gap: 10px;
+}
+
+.inventory-test-tools {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(246, 196, 83, 0.22);
+  border-radius: 8px;
+  background: rgba(246, 196, 83, 0.06);
+}
+
+.inventory-test-tools .ghost-button {
+  min-height: 34px;
+}
+
+.inventory-test-tools small {
+  color: #f8d98b;
+  white-space: nowrap;
 }
 
 .equipment-panel {
@@ -799,8 +1095,7 @@ small {
 
 .equipment-candidate-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .equipment-candidate-list .empty-hint {
@@ -822,6 +1117,292 @@ small {
   border-color: rgba(94, 234, 212, 0.3);
   background: rgba(15, 23, 42, 0.58);
   text-align: center;
+}
+
+.grade-common {
+  --grade-color: var(--grade-common);
+  --grade-glow: rgba(174, 183, 196, 0.2);
+}
+
+.grade-fine {
+  --grade-color: var(--grade-fine);
+  --grade-glow: rgba(85, 214, 138, 0.28);
+}
+
+.grade-rare {
+  --grade-color: var(--grade-rare);
+  --grade-glow: rgba(96, 165, 250, 0.34);
+}
+
+.grade-mystic {
+  --grade-color: var(--grade-mystic);
+  --grade-glow: rgba(192, 132, 252, 0.38);
+}
+
+.grade-earth {
+  --grade-color: var(--grade-earth);
+  --grade-glow: rgba(246, 196, 83, 0.44);
+}
+
+.grade-heaven {
+  --grade-color: var(--grade-heaven);
+  --grade-glow: rgba(255, 107, 107, 0.5);
+}
+
+.grade-card {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--grade-color) 46%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--grade-color) 12%, transparent), 0 0 18px var(--grade-glow);
+}
+
+.grade-card::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--grade-color) 20%, transparent), transparent 32%),
+    linear-gradient(110deg, transparent, color-mix(in srgb, var(--grade-color) 10%, transparent), transparent);
+  opacity: 0.78;
+}
+
+.motion-on .grade-card.grade-rare::after,
+.motion-on .grade-card.grade-mystic::after,
+.motion-on .grade-card.grade-earth::after,
+.motion-on .grade-card.grade-heaven::after,
+.motion-on .grade-badge.grade-rare::after,
+.motion-on .grade-badge.grade-mystic::after,
+.motion-on .grade-badge.grade-earth::after,
+.motion-on .grade-badge.grade-heaven::after {
+  position: absolute;
+  top: -30%;
+  bottom: -30%;
+  left: -70%;
+  width: 44%;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--grade-color) 38%, white 22%), transparent);
+  transform: rotate(16deg);
+  animation: grade-sweep 3.8s ease-in-out infinite;
+}
+
+.motion-on .grade-card.grade-mystic {
+  animation: grade-pulse 2.8s ease-in-out infinite;
+}
+
+.motion-on .grade-card.grade-earth,
+.motion-on .grade-badge.grade-earth {
+  animation: grade-gold-pulse 2.6s ease-in-out infinite;
+}
+
+.motion-on .grade-card.grade-heaven,
+.motion-on .grade-badge.grade-heaven {
+  animation: grade-heaven-flare 2.2s ease-in-out infinite;
+}
+
+.grade-chip {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--grade-color) 70%, transparent);
+  border-radius: 999px;
+  color: #fff;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--grade-color) 32%, #020617), rgba(2, 6, 23, 0.72)),
+    rgba(2, 6, 23, 0.82);
+  box-shadow: 0 0 14px var(--grade-glow);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0 8px var(--grade-color);
+  white-space: nowrap;
+}
+
+.grade-chip.compact {
+  min-width: 34px;
+  min-height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+.grade-name {
+  color: #f7fff9;
+  font-weight: 650;
+}
+
+.grade-name.strong {
+  color: #fff;
+  font-weight: 900;
+  text-shadow: 0 0 10px var(--grade-glow), 0 0 6px color-mix(in srgb, var(--grade-color) 64%, transparent);
+}
+
+.item-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 66px;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(11, 17, 27, 0.56);
+  text-align: left;
+}
+
+.item-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.item-card div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.item-card strong,
+.item-card small,
+.item-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.item-card span {
+  color: #c6d8cf;
+  font-size: 12px;
+}
+
+.item-family-card {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(11, 17, 27, 0.56);
+}
+
+.item-family-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.item-family-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.item-family-head div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.item-family-head strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-family-head small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-grade-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.grade-badge {
+  position: relative;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 5px 4px;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--grade-color) 56%, transparent);
+  color: #fff;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--grade-color) 24%, rgba(15, 23, 42, 0.9)), rgba(6, 10, 18, 0.86)),
+    rgba(15, 23, 42, 0.8);
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--grade-color) 14%, transparent), 0 0 14px var(--grade-glow);
+  text-align: center;
+}
+
+.grade-badge:disabled {
+  color: #64748b;
+  border-color: rgba(100, 116, 139, 0.22);
+  background: rgba(15, 23, 42, 0.48);
+  box-shadow: none;
+}
+
+.grade-badge span,
+.grade-badge strong {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grade-badge span {
+  font-size: 11px;
+  font-weight: 800;
+  text-shadow: 0 0 8px var(--grade-color);
+}
+
+.grade-badge strong {
+  color: #f8fafc;
+  font-size: 11px;
+}
+
+.equipment-slot-card.grade-card > *,
+.item-detail-card.grade-card > *,
+.item-row.grade-card > *,
+.combat-slot.grade-card > *,
+.breakthrough-requirement.grade-card > *,
+.breakthrough-slot.grade-card > *,
+.breakthrough-picker-item.grade-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.equipment-slot-meta {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .equipment-page-controls {
@@ -864,6 +1445,58 @@ small {
   box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.36);
 }
 
+.item-detail-card {
+  border-color: color-mix(in srgb, var(--grade-color) 62%, transparent);
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--grade-color) 22%, transparent), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent),
+    rgba(17, 23, 34, 0.98);
+}
+
+.item-detail-card.grade-earth,
+.item-detail-card.grade-heaven {
+  box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.46), 0 0 32px var(--grade-glow);
+}
+
+.item-detail-head h2 {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 14px var(--grade-glow);
+  white-space: nowrap;
+}
+
+.item-detail-card.grade-heaven .item-detail-head h2 {
+  color: #fff7ed;
+  text-shadow: 0 0 18px rgba(255, 107, 107, 0.9), 0 0 28px rgba(246, 196, 83, 0.6);
+}
+
+.grade-affix-list {
+  display: grid;
+  gap: 6px;
+}
+
+.grade-affix-list span {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--grade-color) 34%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--grade-color) 10%, rgba(2, 6, 23, 0.76));
+}
+
+.grade-affix-list strong {
+  color: #fff;
+  font-size: 12px;
+}
+
+.grade-affix-list small {
+  color: #d7e4dd;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .equipment-detail-card .section-heading {
   margin-bottom: 0;
 }
@@ -901,6 +1534,10 @@ small {
   grid-template-columns: 1fr auto auto;
   gap: 8px;
   align-items: center;
+}
+
+.equipment-detail-actions .ghost-button:disabled {
+  min-width: 70px;
 }
 
 .attribute-panel {
@@ -1513,15 +2150,32 @@ small {
 }
 
 .combat-actions,
-.combat-loadout-grid,
 .target-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.combat-loadout-grid {
+.combat-loadout-panel {
+  display: grid;
+  gap: 8px;
   margin-top: 12px;
+}
+
+.combat-martial-row,
+.combat-method-row,
+.combat-artifact-row {
+  display: grid;
+  gap: 8px;
+}
+
+.combat-martial-row,
+.combat-method-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.combat-artifact-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .combat-slot {
@@ -1536,6 +2190,15 @@ small {
   text-align: left;
 }
 
+.combat-artifact-row .combat-slot {
+  min-height: 66px;
+  padding: 7px;
+}
+
+.combat-slot.utility {
+  min-height: 58px;
+}
+
 .combat-slot span {
   display: inline-flex;
   align-items: center;
@@ -1547,6 +2210,10 @@ small {
 .combat-slot strong {
   color: #f7fff9;
   font-size: 14px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .combat-slot small {
@@ -1563,6 +2230,13 @@ small {
   background:
     radial-gradient(circle at top left, rgba(167, 139, 250, 0.14), transparent 65%),
     rgba(15, 23, 42, 0.58);
+}
+
+.combat-slot.grade-card:not(.empty) {
+  border-color: color-mix(in srgb, var(--grade-color) 56%, transparent);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--grade-color) 22%, transparent), transparent 65%),
+    rgba(15, 23, 42, 0.64);
 }
 
 .log-name-player {
@@ -1589,6 +2263,84 @@ small {
   display: grid;
   gap: 10px;
   color: #d5e3dc;
+}
+
+.cave-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.cave-status-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(94, 234, 212, 0.08), transparent 40%),
+    rgba(11, 17, 27, 0.42);
+}
+
+.cave-status-card .section-heading {
+  margin-bottom: 0;
+}
+
+.cave-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cave-metric {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.cave-metric span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cave-metric strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cave-progress-track {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cave-progress-track div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--arcane), var(--gold));
+}
+
+.cave-hint {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cave-upgrade-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.cave-facility-grid {
+  margin-bottom: 0;
 }
 
 .feature-grid {
@@ -1664,11 +2416,58 @@ small {
   line-height: 1;
 }
 
+@keyframes grade-sweep {
+  0% {
+    left: -76%;
+    opacity: 0;
+  }
+  18%,
+  64% {
+    opacity: 0.95;
+  }
+  100% {
+    left: 132%;
+    opacity: 0;
+  }
+}
+
+@keyframes grade-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--grade-color) 14%, transparent), 0 0 18px var(--grade-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--grade-color) 36%, transparent), 0 0 28px var(--grade-glow);
+  }
+}
+
+@keyframes grade-gold-pulse {
+  0%,
+  100% {
+    filter: saturate(1);
+  }
+  50% {
+    filter: saturate(1.32) brightness(1.08);
+  }
+}
+
+@keyframes grade-heaven-flare {
+  0%,
+  100% {
+    filter: saturate(1.05) brightness(1);
+  }
+  50% {
+    filter: saturate(1.55) brightness(1.16);
+  }
+}
+
 @media (max-width: 370px) {
   .status-grid,
   .cultivation-metrics,
+  .cave-detail-grid,
   .equipment-slot-grid,
   .equipment-candidate-list,
+  .item-grade-grid,
   .attribute-grid,
   .feature-grid,
   .location-grid,
@@ -1676,7 +2475,6 @@ small {
   .inner-map-grid,
   .action-grid,
   .combat-actions,
-  .combat-loadout-grid,
   .target-grid {
     grid-template-columns: 1fr;
   }

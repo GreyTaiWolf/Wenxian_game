@@ -1,4 +1,4 @@
-import { getItem, items } from "../data/items";
+import { getItem, items, normalizeItemId } from "../data/items";
 import type { EquipmentBonus, EquipmentSlotId, GameState, InventoryState, ItemConfig, Stats } from "../types";
 
 export const equipmentSlots: Array<{ id: EquipmentSlotId; label: string; emptyLabel: string }> = [
@@ -80,9 +80,10 @@ export function getEffectivePower(game: GameState): number {
 }
 
 export function equipItem(game: GameState, itemId: string): GameState {
-  const item = getItem(itemId);
+  const normalizedItemId = normalizeItemId(itemId);
+  const item = getItem(normalizedItemId);
   const equipment = item.equipment;
-  const amount = game.inventory.items[itemId] ?? 0;
+  const amount = game.inventory.items[normalizedItemId] ?? 0;
   if (!equipment || amount <= 0) {
     return game;
   }
@@ -90,7 +91,7 @@ export function equipItem(game: GameState, itemId: string): GameState {
   const currentEquippedId = game.inventory.equipment[equipment.slot];
   const nextItems = {
     ...game.inventory.items,
-    [itemId]: amount - 1,
+    [normalizedItemId]: amount - 1,
   };
 
   if (currentEquippedId && getItem(currentEquippedId).equipment?.slot === equipment.slot) {
@@ -104,7 +105,7 @@ export function equipItem(game: GameState, itemId: string): GameState {
       items: nextItems,
       equipment: {
         ...game.inventory.equipment,
-        [equipment.slot]: itemId,
+        [equipment.slot]: normalizedItemId,
       },
     },
   };
@@ -136,9 +137,10 @@ export function unequipSlot(game: GameState, slotId: EquipmentSlotId): GameState
 }
 
 export function sellItem(game: GameState, itemId: string): GameState {
-  const item = getItem(itemId);
-  const amount = game.inventory.items[itemId] ?? 0;
-  if (amount <= 0) {
+  const normalizedItemId = normalizeItemId(itemId);
+  const item = getItem(normalizedItemId);
+  const amount = game.inventory.items[normalizedItemId] ?? 0;
+  if (amount <= 0 || !canSellItem(item)) {
     return game;
   }
 
@@ -152,7 +154,7 @@ export function sellItem(game: GameState, itemId: string): GameState {
       ...game.inventory,
       items: {
         ...game.inventory.items,
-        [itemId]: amount - 1,
+        [normalizedItemId]: amount - 1,
       },
     },
   };
@@ -160,6 +162,10 @@ export function sellItem(game: GameState, itemId: string): GameState {
 
 export function getItemSellPrice(item: ItemConfig): number {
   return Math.max(1, Math.floor((item.price ?? 1) * 0.5));
+}
+
+export function canSellItem(item: ItemConfig): boolean {
+  return Boolean(item.price);
 }
 
 export function getEquippableInventoryItems(game: GameState): ItemConfig[] {
@@ -173,9 +179,10 @@ function normalizeEquipmentValue(value: unknown, slotId: EquipmentSlotId): strin
   if (Object.prototype.hasOwnProperty.call(legacyEquipmentMap, value)) {
     return legacyEquipmentMap[value];
   }
-  const item = getItem(value);
+  const normalizedValue = normalizeItemId(value);
+  const item = getItem(normalizedValue);
   if (item.equipment?.slot === slotId) {
-    return value;
+    return normalizedValue;
   }
-  return value;
+  return null;
 }
