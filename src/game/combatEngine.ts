@@ -386,14 +386,19 @@ export function performUseItem(game: GameState, itemId: string): GameState {
   if (actor?.kind !== "player" || !item.combatHeal || (game.inventory.items[normalizedItemId] ?? 0) <= 0) {
     return game;
   }
+  const currentAmount = game.inventory.items[normalizedItemId] ?? 0;
+  const nextAmount = currentAmount - 1;
+  const nextItems = { ...game.inventory.items };
+  if (nextAmount > 0) {
+    nextItems[normalizedItemId] = nextAmount;
+  } else {
+    delete nextItems[normalizedItemId];
+  }
   const withItemSpent = {
     ...game,
     inventory: {
       ...game.inventory,
-      items: {
-        ...game.inventory.items,
-        [normalizedItemId]: game.inventory.items[normalizedItemId] - 1,
-      },
+      items: nextItems,
     },
   };
   const healed = mapActor(game.combat, actor.id, (current) => ({
