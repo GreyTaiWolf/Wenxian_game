@@ -16,7 +16,7 @@ export default function GameScreen({
   onExit,
 }: {
   game: GameState;
-  onChange: (game: GameState) => void;
+  onChange: (next: GameState | ((prev: GameState) => GameState)) => void;
   onExit: () => void;
 }) {
   const [activeModule, setActiveModule] = useState<PrimaryModule>("cultivation");
