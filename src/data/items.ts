@@ -247,7 +247,7 @@ export function getItem(itemId: string): ItemConfig {
 
 export function formatItemName(itemOrId: ItemConfig | string): string {
   const item = typeof itemOrId === "string" ? getItem(itemOrId) : itemOrId;
-  return `${itemGradeLabels[item.grade]}${item.name}`;
+  return item.name;
 }
 
 export function shouldEmphasizeItemGrade(grade: ItemGrade): boolean {
