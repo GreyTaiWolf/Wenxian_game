@@ -11,7 +11,13 @@ type LogNameMeta = {
   className: string;
 };
 
-export default function CombatView({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
+export default function CombatView({
+  game,
+  onChange,
+}: {
+  game: GameState;
+  onChange: (next: GameState | ((prev: GameState) => GameState)) => void;
+}) {
   const combat = game.combat;
   const [selectedSkill, setSelectedSkill] = useState<SkillConfig | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
@@ -43,10 +49,10 @@ export default function CombatView({ game, onChange }: { game: GameState; onChan
       return;
     }
     const timer = window.setTimeout(() => {
-      onChange(performPlayerBasic(game));
+      onChange((prevGame) => performPlayerBasic(prevGame));
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [combat?.id, combat?.turnIndex, game, hasUsableLoadoutAction, onChange, playerTurn, selectedSkill]);
+  }, [combat?.id, combat?.turnIndex, hasUsableLoadoutAction, onChange, playerTurn, selectedSkill]);
 
   function useSkill(skill: SkillConfig, targetId?: string) {
     setSelectedSkill(null);

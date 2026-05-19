@@ -35,11 +35,18 @@ export default function App() {
     setScreen("game");
   }
 
-  function updateGame(game: GameState) {
+  function updateGame(next: GameState | ((prev: GameState) => GameState)) {
     if (!activeSlot) {
       return;
     }
-    setRootSave((current) => updateSlotGame(current, activeSlot.id, game));
+    setRootSave((current) => {
+      const slot = current.slots.find((item) => item?.id === activeSlot.id);
+      if (!slot) {
+        return current;
+      }
+      const game = typeof next === "function" ? next(slot.game) : next;
+      return updateSlotGame(current, activeSlot.id, game);
+    });
   }
 
   function updateSettings(settings: SettingsState) {
