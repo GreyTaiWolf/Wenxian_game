@@ -1064,6 +1064,10 @@ small {
   background: rgba(20, 184, 166, 0.12);
 }
 
+.equipment-slot-card.slot-action-highlight {
+  animation: slot-action-highlight 0.22s ease-out;
+}
+
 .equipment-slot-card div {
   display: grid;
   gap: 3px;
@@ -1088,7 +1092,7 @@ small {
 }
 
 .equipment-slot-card button {
-  min-height: 34px;
+  min-height: 42px;
   padding: 0 10px;
   white-space: nowrap;
 }
@@ -1225,6 +1229,23 @@ small {
   white-space: nowrap;
 }
 
+.grade-chip small {
+  font-size: 10px;
+  opacity: 0.86;
+}
+
+.grade-chip strong {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.grade-chip i {
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: -0.03em;
+  opacity: 0.88;
+}
+
 .grade-chip.compact {
   min-width: 34px;
   min-height: 18px;
@@ -1258,6 +1279,10 @@ small {
   border-radius: 8px;
   background: rgba(11, 17, 27, 0.56);
   text-align: left;
+}
+
+.item-grade-press:active {
+  transform: scale(0.985);
 }
 
 .item-card > * {
@@ -1413,10 +1438,17 @@ small {
   margin-top: 8px;
   color: var(--gold);
   font-size: 11px;
+  position: sticky;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  padding: 6px;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  background: rgba(2, 6, 23, 0.78);
 }
 
 .equipment-page-controls .ghost-button {
-  min-height: 32px;
+  min-height: 42px;
   padding: 0 8px;
   font-size: 12px;
 }
@@ -1460,11 +1492,13 @@ small {
 
 .item-detail-head h2 {
   min-width: 0;
-  overflow: hidden;
+  display: -webkit-box;
   color: #fff;
-  text-overflow: ellipsis;
+  overflow: hidden;
   text-shadow: 0 0 14px var(--grade-glow);
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .item-detail-card.grade-heaven .item-detail-head h2 {
@@ -1540,6 +1574,11 @@ small {
   min-width: 70px;
 }
 
+.equipment-detail-actions .ghost-button,
+.equipment-detail-actions .primary-action {
+  min-height: 42px;
+}
+
 .attribute-panel {
   position: relative;
   padding-top: 0;
@@ -1555,8 +1594,8 @@ small {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 0;
-  padding: 0;
+  min-height: 42px;
+  padding: 0 4px;
   border: 0;
   color: #f4fbf7;
   background: transparent;
@@ -1593,9 +1632,14 @@ small {
 }
 
 .attribute-detail-popover .ghost-button {
-  min-height: 30px;
+  min-height: 42px;
   padding: 0 8px;
   font-size: 12px;
+}
+
+.equipment-panel:has(.equipment-detail-backdrop) .equipment-slot-card.filled,
+.equipment-panel:has(.equipment-detail-backdrop) .item-card.grade-card {
+  filter: saturate(0.82) brightness(0.88);
 }
 
 .attribute-detail-grid {
@@ -2458,6 +2502,17 @@ small {
   }
   50% {
     filter: saturate(1.55) brightness(1.16);
+  }
+}
+
+@keyframes slot-action-highlight {
+  from {
+    box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.6);
+    filter: brightness(1.2) saturate(1.25);
+  }
+  to {
+    box-shadow: 0 0 0 10px rgba(94, 234, 212, 0);
+    filter: brightness(1) saturate(1);
   }
 }
 

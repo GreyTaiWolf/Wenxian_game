@@ -45,6 +45,14 @@ const categoryLabels: Record<ItemConfig["category"], string> = {
 const statOrder: Array<keyof Stats> = ["maxHp", "maxSpirit", "attack", "defense", "divineSense", "speed", "dodge", "crit"];
 const compactStatOrder: Array<keyof Stats> = ["maxHp", "attack", "maxSpirit", "defense"];
 const equippableItemPageSize = 4;
+const gradeShortLabels: Record<ItemGrade, string> = {
+  common: "凡",
+  fine: "良",
+  rare: "珍",
+  mystic: "玄",
+  earth: "地",
+  heaven: "天",
+};
 const slotIcons: Record<string, GameIconName> = {
   weapon: "equipment-weapon",
   robe: "equipment-robe",
@@ -90,6 +98,7 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [equipmentPage, setEquipmentPage] = useState(0);
   const [showAttributeDetails, setShowAttributeDetails] = useState(false);
+  const [highlightSlotId, setHighlightSlotId] = useState<string | null>(null);
   const effectiveStats = getEffectiveStats(game);
   const equippableItems = getInventoryItems(game, ["equipment"]);
   const pageCount = Math.max(1, Math.ceil(equippableItems.length / equippableItemPageSize));
@@ -116,7 +125,10 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
             const item = getEquippedItem(game, slot.id);
             const rawValue = game.inventory.equipment[slot.id];
             return (
-              <article className={`equipment-slot-card ${item ? `filled grade-card grade-${item.grade}` : ""}`} key={slot.id}>
+              <article
+                className={`equipment-slot-card ${item ? `filled grade-card grade-${item.grade}` : ""}${highlightSlotId === slot.id ? " slot-action-highlight" : ""}`}
+                key={slot.id}
+              >
                 <GameIcon name={slotIcons[slot.id] ?? "equipment"} size={18} />
                 <div>
                   <div className="equipment-slot-meta">
@@ -126,7 +138,14 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
                   <strong className={item ? getGradeNameClass(item) : ""}>{item ? formatItemName(item) : rawValue ?? slot.emptyLabel}</strong>
                   <span>{item ? formatBonuses(item.equipment?.bonuses) : rawValue ? "旧存档装备已失效" : "空槽"}</span>
                 </div>
-                <button disabled={!rawValue} onClick={() => onChange(unequipSlot(game, slot.id))}>
+                <button
+                  disabled={!rawValue}
+                  onClick={() => {
+                    onChange(unequipSlot(game, slot.id));
+                    setHighlightSlotId(slot.id);
+                    setTimeout(() => setHighlightSlotId((current) => (current === slot.id ? null : current)), 220);
+                  }}
+                >
                   卸下
                 </button>
               </article>
@@ -224,6 +243,11 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
           onClose={() => setSelectedItemId(null)}
           onChange={(nextGame) => {
             onChange(nextGame);
+            if (selectedItem?.equipment?.slot) {
+              const nextSlot = selectedItem.equipment.slot;
+              setHighlightSlotId(nextSlot);
+              setTimeout(() => setHighlightSlotId((current) => (current === nextSlot ? null : current)), 220);
+            }
             setSelectedItemId(null);
           }}
         />
@@ -291,7 +315,7 @@ function ItemCard({
 }) {
   const amount = game.inventory.items[item.id] ?? 0;
   return (
-    <button className={`item-card grade-card grade-${item.grade}`} type="button" onClick={() => onSelect(item.id)}>
+    <button className={`item-card grade-card grade-${item.grade} item-grade-press`} type="button" onClick={() => onSelect(item.id)}>
       <GameIcon name={iconName} size={17} />
       <div>
         <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
@@ -357,7 +381,13 @@ function ItemDetailCard({
         </div>
         <div className="equipment-detail-actions">
           {item.equipment ? (
-            <button className="primary-action compact" onClick={() => onChange(equipItem(game, item.id))}>
+            <button
+              className="primary-action compact"
+              onClick={() => {
+                onChange(equipItem(game, item.id));
+                onClose();
+              }}
+            >
               {replacing ? "替换装备" : "选择装备"}
             </button>
           ) : null}
@@ -374,7 +404,13 @@ function ItemDetailCard({
 }
 
 function GradeChip({ grade, compact = false }: { grade: ItemGrade; compact?: boolean }) {
-  return <span className={`grade-chip grade-${grade} ${compact ? "compact" : ""}`}>{itemGradeLabels[grade]}</span>;
+  return (
+    <span className={`grade-chip grade-${grade} ${compact ? "compact" : ""}`}>
+      <small>{gradeShortLabels[grade]}</small>
+      <strong>{itemGradeLabels[grade]}</strong>
+      <i aria-hidden>{Array.from({ length: itemGradeMetas[grade].tier }, () => "✦").join("")}</i>
+    </span>
+  );
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
