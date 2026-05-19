@@ -14,8 +14,8 @@ function toPlayerActor(game: GameState): CombatActor {
     side: "ally",
     kind: "player",
     ...stats,
-    hp: stats.maxHp,
-    spirit: stats.maxSpirit,
+    hp: Math.max(1, Math.min(game.player.hp, stats.maxHp)),
+    spirit: Math.max(0, Math.min(game.player.spirit, stats.maxSpirit)),
     skillIds: game.player.skillIds,
   };
 }
@@ -102,7 +102,7 @@ function computeDamage(actor: CombatActor, target: CombatActor, skill: SkillConf
   const defenseFactor = skill.id === "basic_strike" || skill.id === "bite" ? 0.45 : 0.35;
   let damage = Math.max(1, Math.floor(actorAttack(actor) * skill.power - target.defense * defenseFactor));
   if (Math.random() <= actor.crit) {
-    damage = Math.floor(damage * 1.5);
+    damage = Math.floor(damage * actor.critDamage);
   }
   if (target.defending) {
     damage = Math.floor(damage * 0.5);
@@ -111,10 +111,6 @@ function computeDamage(actor: CombatActor, target: CombatActor, skill: SkillConf
     damage = Math.floor(damage * 0.65);
   }
   return Math.max(1, damage);
-}
-
-function dodgeChance(actor: CombatActor): number {
-  return Math.max(0, Math.min(0.75, actor.dodge ?? 0));
 }
 
 function applySkill(combat: CombatState, actorId: string, skillId: string, targetId?: string): CombatState {
@@ -146,10 +142,6 @@ function applySkill(combat: CombatState, actorId: string, skillId: string, targe
       const currentTarget = findActor(nextCombat, target.id);
       const currentActor = findActor(nextCombat, actor.id);
       if (!currentTarget || !currentActor) {
-        return;
-      }
-      if (Math.random() < dodgeChance(currentTarget)) {
-        logLines.push(`${target.name} 身形一闪，避开了 ${actor.name} 的 ${skill.name}。`);
         return;
       }
       const damage = computeDamage(currentActor, currentTarget, skill);

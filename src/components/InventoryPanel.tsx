@@ -2,26 +2,39 @@ import { useState } from "react";
 import {
   formatItemName,
   getItem,
-  getItemGradeAffixes,
   itemGradeLabels,
   itemGradeMetas,
+  itemTierLabels,
   items,
   shouldEmphasizeItemGrade,
 } from "../data/items";
 import {
+  canEquipItem,
   canSellItem,
-  equipItem,
+  equipEquipmentInstance,
   equipmentSlots,
   getEffectiveStats,
+  getEquipmentInstanceItem,
+  getEquippedEquipmentInstance,
   getEquippedItem,
+  getEquippableInventoryItems,
   getItemSellPrice,
+  sellEquipmentInstance,
   sellItem,
   unequipSlot,
 } from "../game/equipment";
-import type { EquipmentBonus, GameState, ItemConfig, ItemGrade, Stats } from "../types";
+import type { EquipmentBonus, EquipmentInstance, GameState, ItemConfig, ItemGrade, Stats } from "../types";
 import { GameIcon, type GameIconName } from "./GameIcon";
 
 type InventoryTab = "equipment" | "items" | "pills" | "materials";
+
+interface InventoryGridEntry {
+  id: string;
+  item: ItemConfig;
+  iconName: GameIconName;
+  amount?: number;
+  onSelect: () => void;
+}
 
 const statLabels: Record<keyof Stats, string> = {
   maxHp: "气血",
@@ -32,6 +45,7 @@ const statLabels: Record<keyof Stats, string> = {
   speed: "速度",
   dodge: "闪避",
   crit: "暴击",
+  critDamage: "暴伤",
 };
 
 const categoryLabels: Record<ItemConfig["category"], string> = {
@@ -42,17 +56,9 @@ const categoryLabels: Record<ItemConfig["category"], string> = {
   quest: "任务",
 };
 
-const statOrder: Array<keyof Stats> = ["maxHp", "maxSpirit", "attack", "defense", "divineSense", "speed", "dodge", "crit"];
+const statOrder: Array<keyof Stats> = ["maxHp", "maxSpirit", "attack", "defense", "divineSense", "speed", "dodge", "crit", "critDamage"];
 const compactStatOrder: Array<keyof Stats> = ["maxHp", "attack", "maxSpirit", "defense"];
-const equippableItemPageSize = 4;
-const gradeShortLabels: Record<ItemGrade, string> = {
-  common: "凡",
-  fine: "良",
-  rare: "珍",
-  mystic: "玄",
-  earth: "地",
-  heaven: "天",
-};
+const inventoryGridPageSize = 9;
 const slotIcons: Record<string, GameIconName> = {
   weapon: "equipment-weapon",
   robe: "equipment-robe",
@@ -87,28 +93,36 @@ export default function InventoryPanel({ game, onChange }: { game: GameState; on
       </div>
 
       {tab === "equipment" ? <EquipmentPanel game={game} onChange={onChange} /> : null}
-      {tab === "items" ? <ItemList game={game} title="随身物品" categories={["currency", "quest"]} onChange={onChange} /> : null}
-      {tab === "pills" ? <ItemList game={game} title="丹药" categories={["pill"]} onChange={onChange} /> : null}
-      {tab === "materials" ? <ItemList game={game} title="材料" categories={["material"]} onChange={onChange} /> : null}
+      {tab === "items" ? <ItemList game={game} title="背包" subtitle="物品" categories={["currency", "quest"]} onChange={onChange} /> : null}
+      {tab === "pills" ? <ItemList game={game} title="背包" subtitle="丹药" categories={["pill"]} onChange={onChange} /> : null}
+      {tab === "materials" ? <ItemList game={game} title="背包" subtitle="材料" categories={["material"]} onChange={onChange} /> : null}
     </section>
   );
 }
 
 function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(null);
   const [equipmentPage, setEquipmentPage] = useState(0);
   const [showAttributeDetails, setShowAttributeDetails] = useState(false);
   const [highlightSlotId, setHighlightSlotId] = useState<string | null>(null);
   const effectiveStats = getEffectiveStats(game);
-  const equippableItems = getInventoryItems(game, ["equipment"]);
-  const pageCount = Math.max(1, Math.ceil(equippableItems.length / equippableItemPageSize));
-  const safeEquipmentPage = Math.min(equipmentPage, pageCount - 1);
-  const pagedEquippableItems = equippableItems.slice(
-    safeEquipmentPage * equippableItemPageSize,
-    safeEquipmentPage * equippableItemPageSize + equippableItemPageSize,
-  );
-  const selectedItem = selectedItemId ? getItem(selectedItemId) : null;
-  const selectedAmount = selectedItem ? (game.inventory.items[selectedItem.id] ?? 0) : 0;
+  const equipmentBagItems = getEquippableInventoryItems(game);
+  const selectedEquipment = selectedEquipmentId ? game.inventory.equipmentItems.find((instance) => instance.id === selectedEquipmentId) ?? null : null;
+  const selectedItem = getEquipmentInstanceItem(selectedEquipment);
+  const equipmentEntries = equipmentBagItems.flatMap<InventoryGridEntry>((instance) => {
+    const item = getEquipmentInstanceItem(instance);
+    if (!item) {
+      return [];
+    }
+    return [
+      {
+        id: instance.id,
+        item,
+        iconName: item.equipment ? slotIcons[item.equipment.slot] ?? "equipment" : "equipment",
+        onSelect: () => setSelectedEquipmentId(instance.id),
+      },
+    ];
+  });
 
   return (
     <div className="equipment-panel">
@@ -122,6 +136,7 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
         </div>
         <div className="equipment-slot-grid">
           {equipmentSlots.map((slot) => {
+            const instance = getEquippedEquipmentInstance(game, slot.id);
             const item = getEquippedItem(game, slot.id);
             const rawValue = game.inventory.equipment[slot.id];
             return (
@@ -135,8 +150,8 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
                     <small>{slot.label}</small>
                     {item ? <GradeChip grade={item.grade} compact /> : null}
                   </div>
-                  <strong className={item ? getGradeNameClass(item) : ""}>{item ? formatItemName(item) : rawValue ?? slot.emptyLabel}</strong>
-                  <span>{item ? formatBonuses(item.equipment?.bonuses) : rawValue ? "旧存档装备已失效" : "空槽"}</span>
+                  <strong className={item ? getGradeNameClass(item) : ""}>{item ? formatItemName(item) : rawValue ? "装备数据已失效" : slot.emptyLabel}</strong>
+                  <span>{item ? formatBonuses(instance?.bonuses) : rawValue ? "请卸下后重新获取" : "空槽"}</span>
                 </div>
                 <button
                   disabled={!rawValue}
@@ -158,42 +173,17 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
         <div className="section-heading">
           <h2>
             <GameIcon name="equipment-weapon" size={18} />
-            可穿戴
+            背包
           </h2>
-          <span>{equippableItems.length > equippableItemPageSize ? `${safeEquipmentPage + 1}/${pageCount}` : `${equippableItems.length} 件`}</span>
+          <span>装备 {equipmentBagItems.length} 件</span>
         </div>
-        <div className="equipment-candidate-list">
-          {equippableItems.length ? (
-            pagedEquippableItems.map((item) => (
-              <ItemCard
-                game={game}
-                iconName={item.equipment ? slotIcons[item.equipment.slot] ?? "equipment" : "equipment"}
-                item={item}
-                key={item.id}
-                onSelect={setSelectedItemId}
-              />
-            ))
-          ) : (
-            <p className="empty-hint">暂无可穿戴装备，可去坊市购买或历练获取。</p>
-          )}
-        </div>
-        {equippableItems.length > equippableItemPageSize ? (
-          <div className="equipment-page-controls">
-            <button className="ghost-button" disabled={safeEquipmentPage <= 0} onClick={() => setEquipmentPage(Math.max(0, safeEquipmentPage - 1))}>
-              上一页
-            </button>
-            <span>
-              {safeEquipmentPage + 1} / {pageCount}
-            </span>
-            <button
-              className="ghost-button"
-              disabled={safeEquipmentPage >= pageCount - 1}
-              onClick={() => setEquipmentPage(Math.min(pageCount - 1, safeEquipmentPage + 1))}
-            >
-              下一页
-            </button>
-          </div>
-        ) : null}
+        <InventoryGrid
+          entries={equipmentEntries}
+          emptyText="暂无装备，可去坊市购买或历练获取。"
+          page={equipmentPage}
+          onPageChange={setEquipmentPage}
+          showStackCount={false}
+        />
       </section>
 
       <section className="attribute-panel">
@@ -236,19 +226,20 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
         </div>
       </section>
 
-      {selectedItem && selectedAmount > 0 ? (
+      {selectedEquipment && selectedItem ? (
         <ItemDetailCard
           game={game}
           item={selectedItem}
-          onClose={() => setSelectedItemId(null)}
+          equipmentInstance={selectedEquipment}
+          onClose={() => setSelectedEquipmentId(null)}
           onChange={(nextGame) => {
             onChange(nextGame);
-            if (selectedItem?.equipment?.slot) {
+            if (selectedItem.equipment?.slot) {
               const nextSlot = selectedItem.equipment.slot;
               setHighlightSlotId(nextSlot);
               setTimeout(() => setHighlightSlotId((current) => (current === nextSlot ? null : current)), 220);
             }
-            setSelectedItemId(null);
+            setSelectedEquipmentId(null);
           }}
         />
       ) : null}
@@ -258,20 +249,30 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
 
 function ItemList({
   title,
+  subtitle,
   categories,
   game,
   onChange,
 }: {
   title: string;
+  subtitle: string;
   categories: ItemConfig["category"][];
   game: GameState;
   onChange: (game: GameState) => void;
 }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const visibleItems = getInventoryItems(game, categories);
   const selectedItem = selectedItemId ? getItem(selectedItemId) : null;
   const selectedAmount = selectedItem ? (game.inventory.items[selectedItem.id] ?? 0) : 0;
   const iconName = categories.includes("pill") ? "item-pill" : categories.includes("material") ? "item-material" : "item";
+  const entries = visibleItems.map<InventoryGridEntry>((item) => ({
+    id: item.id,
+    item,
+    iconName: getItemIconName(item, iconName),
+    amount: game.inventory.items[item.id] ?? 0,
+    onSelect: () => setSelectedItemId(item.id),
+  }));
 
   return (
     <div className="item-list">
@@ -280,13 +281,11 @@ function ItemList({
           <GameIcon name={iconName} size={18} />
           {title}
         </h2>
-        <span>{visibleItems.length} 件</span>
+        <span>
+          {subtitle} {visibleItems.length} 种
+        </span>
       </div>
-      {visibleItems.length ? (
-        visibleItems.map((item) => <ItemCard game={game} iconName={getItemIconName(item, iconName)} item={item} key={item.id} onSelect={setSelectedItemId} />)
-      ) : (
-        <p className="empty-hint">暂无此类物品。</p>
-      )}
+      <InventoryGrid entries={entries} emptyText="暂无此类物品。" page={page} onPageChange={setPage} showStackCount />
       {selectedItem && selectedAmount > 0 ? (
         <ItemDetailCard
           game={game}
@@ -302,52 +301,86 @@ function ItemList({
   );
 }
 
-function ItemCard({
-  game,
-  item,
-  iconName,
-  onSelect,
+function InventoryGrid({
+  entries,
+  emptyText,
+  page,
+  onPageChange,
+  showStackCount,
 }: {
-  game: GameState;
-  item: ItemConfig;
-  iconName: GameIconName;
-  onSelect: (itemId: string) => void;
+  entries: InventoryGridEntry[];
+  emptyText: string;
+  page: number;
+  onPageChange: (page: number) => void;
+  showStackCount: boolean;
 }) {
-  const amount = game.inventory.items[item.id] ?? 0;
+  const pageCount = Math.max(1, Math.ceil(entries.length / inventoryGridPageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageEntries = entries.slice(safePage * inventoryGridPageSize, safePage * inventoryGridPageSize + inventoryGridPageSize);
+  const slots = Array.from({ length: inventoryGridPageSize }, (_, index) => pageEntries[index] ?? null);
+
   return (
-    <button className={`item-card grade-card grade-${item.grade} item-grade-press`} type="button" onClick={() => onSelect(item.id)}>
-      <GameIcon name={iconName} size={17} />
-      <div>
-        <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
-        <small>
-          {categoryLabels[item.category]} · x{amount}
-          {item.equipment ? ` · ${getSlotLabel(item.equipment.slot)}` : ""}
-        </small>
-        <span>{formatItemSummary(item)}</span>
+    <div className="inventory-grid-wrap">
+      <div className="inventory-grid">
+        {slots.map((entry, index) =>
+          entry ? (
+            <button
+              className={`inventory-grid-slot filled grade-card grade-${entry.item.grade} item-grade-press`}
+              key={entry.id}
+              type="button"
+              onClick={entry.onSelect}
+            >
+              <GameIcon name={entry.iconName} size={17} />
+              <strong className={getGradeNameClass(entry.item)}>{formatItemName(entry.item)}</strong>
+              <span className="inventory-grid-meta">
+                <GradeChip grade={entry.item.grade} compact />
+                {showStackCount && typeof entry.amount === "number" ? <small className="inventory-count-badge">x{entry.amount}</small> : null}
+              </span>
+            </button>
+          ) : (
+            <div className="inventory-grid-slot empty" key={`empty-${safePage}-${index}`} aria-hidden="true" />
+          ),
+        )}
       </div>
-      <GradeChip grade={item.grade} />
-    </button>
+      {entries.length === 0 ? <p className="inventory-grid-empty">{emptyText}</p> : null}
+      {pageCount > 1 ? (
+        <div className="equipment-page-controls inventory-page-controls">
+          <button className="ghost-button" disabled={safePage <= 0} onClick={() => onPageChange(Math.max(0, safePage - 1))}>
+            上一页
+          </button>
+          <span>
+            {safePage + 1} / {pageCount}
+          </span>
+          <button className="ghost-button" disabled={safePage >= pageCount - 1} onClick={() => onPageChange(Math.min(pageCount - 1, safePage + 1))}>
+            下一页
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
 function ItemDetailCard({
   game,
   item,
+  equipmentInstance,
   onClose,
   onChange,
 }: {
   game: GameState;
   item: ItemConfig;
+  equipmentInstance?: EquipmentInstance;
   onClose: () => void;
   onChange: (game: GameState) => void;
 }) {
   const slot = item.equipment?.slot;
-  const replacing = slot ? Boolean(game.inventory.equipment[slot]) : false;
-  const amount = game.inventory.items[item.id] ?? 0;
+  const amount = equipmentInstance ? 1 : game.inventory.items[item.id] ?? 0;
+  const replacing = slot ? Boolean(game.inventory.equipment[slot] && game.inventory.equipment[slot] !== equipmentInstance?.id) : false;
   const sellable = canSellItem(item);
   const sellPrice = getItemSellPrice(item);
-  const gradeMeta = itemGradeMetas[item.grade];
-  const gradeAffixes = getItemGradeAffixes(item.grade);
+  const equipAllowed = item.equipment ? canEquipItem(game, item) : false;
+  const visibleAffixes = equipmentInstance?.affixes ?? item.affixes ?? [];
+  const equipmentBonuses = equipmentInstance?.bonuses ?? item.equipment?.bonuses;
 
   return (
     <div className="equipment-detail-backdrop" onClick={onClose}>
@@ -360,38 +393,73 @@ function ItemDetailCard({
           <GradeChip grade={item.grade} />
         </div>
         <p>{item.description}</p>
-        <div className="equipment-detail-stats">
-          <DetailRow label="品级" value={`${itemGradeLabels[item.grade]} · ${gradeMeta.tone}`} />
-          <DetailRow label="倍率" value={`价格 x${formatNumber(gradeMeta.priceMultiplier)} · 效果 x${gradeMeta.effectMultiplier}`} />
-          <DetailRow label="类型" value={slot ? getSlotLabel(slot) : categoryLabels[item.category]} />
-          <DetailRow label="数量" value={`x${amount}`} />
+        <div className="item-detail-pill-row">
+          <span>{itemTierLabels[item.tier]}</span>
+          <span>{slot ? getSlotLabel(slot) : categoryLabels[item.category]}</span>
+          {!equipmentInstance ? <span>x{amount}</span> : null}
+        </div>
+        {item.equipment ? (
+          <section className="item-detail-section">
+            <h3>属性</h3>
+            <div className="item-detail-bonus-grid">
+              {formatBonusEntries(equipmentBonuses).map((entry) => (
+                <div key={entry.label}>
+                  <span>{entry.label}</span>
+                  <strong>{entry.value}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {item.combatHeal ? (
+          <section className="item-detail-section">
+            <h3>效果</h3>
+            <div className="item-detail-bonus-grid">
+              <div>
+                <span>战斗回复</span>
+                <strong>气血 +{formatNumber(item.combatHeal)}</strong>
+              </div>
+            </div>
+          </section>
+        ) : null}
+        {visibleAffixes.length > 0 ? (
+          <section className="item-detail-section">
+            <h3>词条</h3>
+            <div className="grade-affix-list">
+              {visibleAffixes.map((affix) => (
+                <span key={affix.id}>
+                  <strong>{affix.name}</strong>
+                  <small>{affix.description}</small>
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        <div className="equipment-detail-stats compact">
           <DetailRow label="价值" value={item.price ? `${formatNumber(item.price)} 灵石` : "不可定价"} />
-          {item.equipment ? <DetailRow label="属性" value={formatBonuses(item.equipment.bonuses)} /> : null}
-          {item.equipment ? <DetailRow label="战力" value={`+${formatNumber(item.equipment.powerBonus)}`} /> : null}
-          {item.combatHeal ? <DetailRow label="战斗" value={`气血 +${formatNumber(item.combatHeal)}`} /> : null}
           <DetailRow label="出售" value={sellable ? `${formatNumber(sellPrice)} 灵石` : "不可出售"} />
         </div>
-        <div className="grade-affix-list">
-          {gradeAffixes.map((affix) => (
-            <span key={affix.id}>
-              <strong>{affix.name}</strong>
-              <small>{affix.description}</small>
-            </span>
-          ))}
-        </div>
         <div className="equipment-detail-actions">
-          {item.equipment ? (
+          {equipmentInstance && item.equipment ? (
             <button
               className="primary-action compact"
+              disabled={!equipAllowed}
               onClick={() => {
-                onChange(equipItem(game, item.id));
+                onChange(equipEquipmentInstance(game, equipmentInstance.id));
                 onClose();
               }}
             >
-              {replacing ? "替换装备" : "选择装备"}
+              {equipAllowed ? (replacing ? "替换装备" : "选择装备") : "境界不足"}
             </button>
           ) : null}
-          <button className="ghost-button" disabled={!sellable || amount <= 0} onClick={() => onChange(sellItem(game, item.id))}>
+          <button
+            className="ghost-button"
+            disabled={!sellable || (!equipmentInstance && amount <= 0)}
+            onClick={() => {
+              onChange(equipmentInstance ? sellEquipmentInstance(game, equipmentInstance.id) : sellItem(game, item.id));
+              onClose();
+            }}
+          >
             出售
           </button>
           <button className="ghost-button" onClick={onClose}>
@@ -404,11 +472,12 @@ function ItemDetailCard({
 }
 
 function GradeChip({ grade, compact = false }: { grade: ItemGrade; compact?: boolean }) {
+  const tier = itemGradeMetas[grade].tier;
+  const showTierMarks = !compact && shouldEmphasizeItemGrade(grade);
   return (
     <span className={`grade-chip grade-${grade} ${compact ? "compact" : ""}`}>
-      <small>{gradeShortLabels[grade]}</small>
       <strong>{itemGradeLabels[grade]}</strong>
-      <i aria-hidden>{Array.from({ length: itemGradeMetas[grade].tier }, () => "✦").join("")}</i>
+      {showTierMarks ? <i aria-hidden>{Array.from({ length: tier }, () => "✦").join("")}</i> : null}
     </span>
   );
 }
@@ -434,7 +503,7 @@ function StatCell({ label, value, bonus }: { label: string; value: string | numb
 
 function getInventoryItems(game: GameState, categories: ItemConfig["category"][]): ItemConfig[] {
   return items
-    .filter((item) => categories.includes(item.category) && (game.inventory.items[item.id] ?? 0) > 0)
+    .filter((item) => !item.equipment && categories.includes(item.category) && (game.inventory.items[item.id] ?? 0) > 0)
     .sort((a, b) => itemGradeMetas[b.grade].tier - itemGradeMetas[a.grade].tier || a.name.localeCompare(b.name, "zh-CN"));
 }
 
@@ -459,19 +528,6 @@ function getSlotLabel(slotId: string): string {
   return equipmentSlots.find((slot) => slot.id === slotId)?.label ?? "装备";
 }
 
-function formatItemSummary(item: ItemConfig): string {
-  if (item.equipment) {
-    return formatBonuses(item.equipment.bonuses);
-  }
-  if (item.combatHeal) {
-    return `战斗气血 +${formatNumber(item.combatHeal)}`;
-  }
-  if (item.price) {
-    return `价值 ${formatNumber(item.price)} 灵石`;
-  }
-  return item.description;
-}
-
 function formatBonuses(bonuses?: EquipmentBonus): string {
   if (!bonuses) {
     return "无属性加成";
@@ -480,6 +536,18 @@ function formatBonuses(bonuses?: EquipmentBonus): string {
     .filter((key) => Boolean(bonuses[key]))
     .map((key) => `${statLabels[key]} +${formatStatValue(key, bonuses[key] ?? 0)}`);
   return parts.length ? parts.join("，") : "无属性加成";
+}
+
+function formatBonusEntries(bonuses?: EquipmentBonus): Array<{ label: string; value: string }> {
+  if (!bonuses) {
+    return [];
+  }
+  return statOrder
+    .filter((key) => Boolean(bonuses[key]))
+    .map((key) => ({
+      label: statLabels[key],
+      value: `+${formatStatValue(key, bonuses[key] ?? 0)}`,
+    }));
 }
 
 function formatBonusValue(key: keyof Stats, value: number): string | null {
@@ -492,6 +560,9 @@ function formatBonusValue(key: keyof Stats, value: number): string | null {
 function formatStatValue(key: keyof Stats, value: number): string | number {
   if (key === "crit" || key === "dodge") {
     return `${Math.round(value * 100)}%`;
+  }
+  if (key === "critDamage") {
+    return `${value.toFixed(2)}倍`;
   }
   return Math.round(value);
 }

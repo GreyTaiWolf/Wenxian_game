@@ -5,11 +5,30 @@ export type SkillCategory = "cultivator" | "beast";
 export type TargetType = "enemySingle" | "enemyAll" | "allySingle" | "allyAll" | "self";
 export type EffectType = "damage" | "heal" | "shield" | "reduceDamage" | "restoreSpirit" | "control";
 export type EquipmentSlotId = "weapon" | "robe" | "crown" | "shoes" | "accessory" | "treasure";
-export type ItemGrade = "common" | "fine" | "rare" | "mystic" | "earth" | "heaven";
+export type MajorRealmId =
+  | "mortal"
+  | "qi_refining"
+  | "foundation"
+  | "core_formation"
+  | "nascent_soul"
+  | "spirit_transformation"
+  | "void_refining"
+  | "body_integration"
+  | "mahayana"
+  | "post_ascension";
+export type RealmPhaseId = "early" | "middle" | "late" | "peak";
+export type ItemTierId = MajorRealmId;
+export type ItemGrade = "common" | "fine" | "superior" | "rare" | "spirit" | "earth" | "heaven";
 
 export interface ItemAmount {
   itemId: string;
   amount: number;
+}
+
+export interface ItemAffix {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export interface Cost {
@@ -20,7 +39,11 @@ export interface Cost {
 export interface RealmConfig {
   id: string;
   name: string;
+  majorRealmId: MajorRealmId;
+  phaseId: RealmPhaseId;
   requiredCultivation: number;
+  baseStats: Stats;
+  lifespan: number;
   breakthroughCost: Cost;
   successRate: number;
   unlocks: UnlockKey[];
@@ -49,6 +72,7 @@ export interface Stats {
   speed: number;
   dodge: number;
   crit: number;
+  critDamage: number;
 }
 
 export type EquipmentBonus = Partial<Stats>;
@@ -71,25 +95,46 @@ export interface ItemConfig {
   id: string;
   name: string;
   category: "currency" | "pill" | "material" | "quest" | "equipment";
+  tier: ItemTierId;
   grade: ItemGrade;
   description: string;
   price?: number;
   combatHeal?: number;
+  affixes?: ItemAffix[];
   equipment?: {
     slot: EquipmentSlotId;
     bonuses: EquipmentBonus;
     powerBonus: number;
+    requiredMajorRealm?: MajorRealmId;
+    requiredPhase?: RealmPhaseId;
   };
+}
+
+export interface EquipmentInstance {
+  id: string;
+  itemId: string;
+  bonuses: EquipmentBonus;
+  powerBonus: number;
+  affixes: ItemAffix[];
+  createdAt: string;
 }
 
 export interface PlayerState {
   name: string;
   realmId: string;
   cultivation: number;
-  power: number;
-  lifespanCurrent: number;
-  lifespanMax: number;
-  mood: string;
+  hp: number;
+  spirit: number;
+  age: number;
+  lifespan: number;
+  mindValue: number;
+  comprehension: number;
+  injuryStacks: number;
+  instabilityStacks: number;
+  power?: number;
+  lifespanCurrent?: number;
+  lifespanMax?: number;
+  mood?: string;
   spiritStones: number;
   stats: Stats;
   skillIds: string[];
@@ -102,11 +147,59 @@ export interface PlayerState {
 export interface InventoryState {
   items: Record<string, number>;
   equipment: Record<EquipmentSlotId, string | null>;
+  equipmentItems: EquipmentInstance[];
 }
 
 export interface QuestState {
   status: "available" | "accepted" | "completed";
   progress: number;
+}
+
+export interface Vector2 {
+  x: number;
+  y: number;
+}
+
+export interface GridCoord {
+  x: number;
+  y: number;
+}
+
+export interface GridCell {
+  x: number;
+  y: number;
+  walkable: boolean;
+  movementCost: number;
+  regionId: string;
+  portalTargetMapId?: string;
+  portalTargetX?: number;
+  portalTargetY?: number;
+}
+
+export interface GridMapData {
+  mapId: string;
+  width: number;
+  height: number;
+  cellSize: number;
+  origin: Vector2;
+  cells: GridCell[];
+}
+
+export type GridDestinationKind = "province" | "location" | "event";
+
+export interface GridDestinationZone {
+  mapId: string;
+  zoneId: string;
+  kind: GridDestinationKind;
+  targetId: string;
+  anchor: GridCoord;
+  cells: GridCoord[];
+  eventIds?: string[];
+}
+
+export interface GridNavigationState {
+  activeMapId: string;
+  positions: Record<string, GridCoord>;
 }
 
 export interface WorldState {
@@ -120,6 +213,7 @@ export interface WorldState {
   tasks: Record<string, QuestState>;
   logs: string[];
   sceneMessage: string;
+  navigation: GridNavigationState;
 }
 
 export interface CaveState {

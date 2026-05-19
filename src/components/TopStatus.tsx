@@ -30,15 +30,28 @@ export function TopStatus({ game, onExit }: { game: GameState; onExit: () => voi
         </span>
         <span>
           <GameIcon name="resource-mood" size={15} />
-          心境 {game.player.mood}
+          心境 {getMindLabel(game.player.mindValue)}
         </span>
       </div>
       <div className="status-meter-grid">
-        <StatusMeter icon="resource-life" label="寿元" value={game.player.lifespanCurrent} max={game.player.lifespanMax} tone="gold" />
+        <StatusMeter icon="resource-life" label="寿元" value={game.player.age} max={game.player.lifespan} tone="gold" />
         <StatusMeter icon="resource-spirit" label="修为" value={game.player.cultivation} max={realm.requiredCultivation} tone="primary" />
       </div>
     </header>
   );
+}
+
+function getMindLabel(value: number): string {
+  if (value >= 70) {
+    return "清明";
+  }
+  if (value >= 45) {
+    return "稳定";
+  }
+  if (value >= 25) {
+    return "波动";
+  }
+  return "紊乱";
 }
 
 function StatusMeter({

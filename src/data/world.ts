@@ -70,13 +70,13 @@ export interface TaskConfig {
 
 export const shopItems: ShopItem[] = [
   { itemId: "healing_powder", price: 55 },
-  { itemId: "qi_pill", price: 800 },
-  { itemId: "low_sword", price: 2200 },
-  { itemId: "foundation_pill", price: 480000 },
-  { itemId: "miasma_flower", price: 9000, regionId: "south_ridge" },
-  { itemId: "tide_shell", price: 10000, regionId: "south_ridge" },
-  { itemId: "demon_core_shard", price: 15000, regionId: "south_ridge" },
-  { itemId: "greenwood_essence", price: 160000, regionId: "south_ridge" },
+  { itemId: "qi_pill", price: 144 },
+  { itemId: "low_sword", price: 396 },
+  { itemId: "foundation_pill", price: 2640 },
+  { itemId: "miasma_flower", price: 288, regionId: "south_ridge" },
+  { itemId: "tide_shell", price: 320, regionId: "south_ridge" },
+  { itemId: "demon_core_shard", price: 480, regionId: "south_ridge" },
+  { itemId: "greenwood_essence", price: 880, regionId: "south_ridge" },
 ];
 
 export const tasks: TaskConfig[] = [

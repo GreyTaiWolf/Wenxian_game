@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
-import { describeCost } from "../game/state";
+import { calculateBreakthroughRatePct, describeCost } from "../game/state";
 import { getNextRealm, getRealm } from "../data/progression";
 import type { GameState, ItemAmount, ItemConfig } from "../types";
 import { GameIcon } from "./GameIcon";
@@ -35,6 +35,7 @@ export default function CultivationPanel({
   const remaining = Math.max(0, realm.requiredCultivation - game.player.cultivation);
   const isCultivationFull = remaining === 0;
   const breakthroughCost = nextRealm?.breakthroughCost;
+  const breakthroughRatePct = calculateBreakthroughRatePct(game, nextRealm);
   const spiritStoneCost = breakthroughCost?.spiritStones ?? 0;
   const requiredMaterials = mergeItemRequirements(breakthroughCost?.items);
   const hasBreakthroughCost = spiritStoneCost > 0 || requiredMaterials.length > 0;
@@ -197,7 +198,7 @@ export default function CultivationPanel({
               </button>
             </div>
             <div className="breakthrough-prep-meta">
-              <span>成功率 {Math.round(nextRealm.successRate * 100)}%</span>
+              <span>成功率 {Math.round(breakthroughRatePct)}%</span>
               <span>{hasBreakthroughCost ? describeCost(nextRealm.breakthroughCost) : "无需材料"}</span>
             </div>
             <div className="breakthrough-requirements">

@@ -1,8 +1,9 @@
 import type { CombatActor, CombatState, GameState, RootSave, SaveSlot, SettingsState } from "../types";
-import { normalizeInventoryItemId, normalizeItemId } from "../data/items";
+import { normalizeGridNavigationState } from "../data/gridMaps";
+import { normalizeItemId } from "../data/items";
 import { normalizeCaveState } from "./cave";
-import { normalizeEquipmentSlots } from "./equipment";
-import { createNewGame, getDefaultDodge, normalizeCombatLoadout, normalizeStats } from "./state";
+import { normalizeInventoryState } from "./equipment";
+import { createNewGame, getDefaultDodge, normalizePlayerState, normalizeStats } from "./state";
 
 export const SAVE_KEY = "xiuxian-text-rpg-save-slots-v1";
 
@@ -77,15 +78,13 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
   if (!slot) {
     return null;
   }
-  const player = slot.game.player;
+  const player = normalizePlayerState(slot.game.player);
   return {
     ...slot,
     game: {
       ...slot.game,
       player: {
         ...player,
-        stats: normalizeStats(player.stats, { dodge: getDefaultDodge("player") }),
-        combatLoadout: normalizeCombatLoadout(player),
         team: (player.team ?? []).map((member) => ({
           ...member,
           stats: normalizeStats(member.stats, { dodge: getDefaultDodge(member.kind) }),
@@ -93,9 +92,11 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
       },
       combat: slot.game.combat ? normalizeCombat(slot.game.combat) : undefined,
       inventory: {
-        ...slot.game.inventory,
-        items: normalizeInventoryItems(slot.game.inventory?.items),
-        equipment: normalizeEquipmentSlots(slot.game.inventory?.equipment),
+        ...normalizeInventoryState(slot.game.inventory),
+      },
+      world: {
+        ...slot.game.world,
+        navigation: normalizeGridNavigationState(slot.game.world?.navigation),
       },
       cave: normalizeCaveState(slot.game.cave),
     },
@@ -119,23 +120,4 @@ function normalizeCombatActor(actor: CombatActor): CombatActor {
     ...actor,
     ...normalizeStats(actor, { dodge: getDefaultDodge(actor.kind) }),
   };
-}
-
-function normalizeInventoryItems(rawItems: Record<string, number> | undefined): Record<string, number> {
-  const source = rawItems ?? {};
-  const normalized: Record<string, number> = {};
-
-  Object.entries(source).forEach(([rawItemId, rawAmount]) => {
-    const amount = Number(rawAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return;
-    }
-    const itemId = normalizeInventoryItemId(rawItemId);
-    if (!itemId) {
-      return;
-    }
-    normalized[itemId] = (normalized[itemId] ?? 0) + amount;
-  });
-
-  return normalized;
 }

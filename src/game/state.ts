@@ -1,32 +1,23 @@
 import { formatItemName, getItem, normalizeItemId } from "../data/items";
 import { getNextRealm, getRealm } from "../data/progression";
+import { createDefaultGridNavigationState } from "../data/gridMaps";
+import { createEquipmentInstance } from "./equipment";
 import type { ActorKind, CaveState, CombatLoadout, Cost, GameState, ItemAmount, PlayerState, Stats, TeamMember, UnlockKey } from "../types";
 
 export const starterStats: Stats = {
   maxHp: 220,
-  maxSpirit: 42,
+  maxSpirit: 48,
   attack: 34,
   defense: 18,
   divineSense: 15,
   speed: 18,
-  dodge: 0.05,
-  crit: 0.06,
+  dodge: 0,
+  crit: 0.05,
+  critDamage: 1.5,
 };
 
-export function getDefaultDodge(kind: ActorKind = "player"): number {
-  if (kind === "pet") {
-    return 0.08;
-  }
-  if (kind === "beast") {
-    return 0.04;
-  }
-  if (kind === "enemyCultivator") {
-    return 0.05;
-  }
-  if (kind === "companion") {
-    return 0.05;
-  }
-  return 0.05;
+export function getDefaultDodge(_kind: ActorKind = "player"): number {
+  return 0;
 }
 
 export function normalizeStats(stats: Partial<Stats> | undefined, fallback: Partial<Stats> = starterStats): Stats {
@@ -49,8 +40,9 @@ export function normalizeStats(stats: Partial<Stats> | undefined, fallback: Part
     defense: safeStatNumber(stats?.defense, fallback.defense, starterStats.defense),
     divineSense: safeStatNumber(stats?.divineSense, fallback.divineSense, starterStats.divineSense),
     speed: safeStatNumber(stats?.speed, fallback.speed, starterStats.speed),
-    dodge: clampRate(safeStatNumber(stats?.dodge, fallback.dodge, starterStats.dodge)),
+    dodge: 0,
     crit: clampRate(safeStatNumber(stats?.crit, fallback.crit, starterStats.crit)),
+    critDamage: Math.max(1, safeStatNumber(stats?.critDamage, fallback.critDamage, starterStats.critDamage)),
   };
 }
 
@@ -92,18 +84,90 @@ export function normalizeCombatLoadout(player: Partial<PlayerState> | undefined)
   };
 }
 
+export function normalizePlayerState(player: Partial<PlayerState> | undefined): PlayerState {
+  const realm = getRealm(player?.realmId ?? "qi_early");
+  const stats = normalizeStats(player?.stats, realm.baseStats);
+  const skillIds = player?.skillIds ?? ["basic_strike", "qi_slash", "rejuvenation"];
+  const age = safeNumber(player?.age, safeNumber(player?.lifespanCurrent, 18));
+  const lifespan = safeNumber(player?.lifespan, safeNumber(player?.lifespanMax, realm.lifespan));
+  return {
+    name: player?.name || "无名散修",
+    realmId: realm.id,
+    cultivation: Math.max(0, Math.min(realm.requiredCultivation, Math.floor(safeNumber(player?.cultivation, 0)))),
+    hp: clampNumber(safeNumber(player?.hp, stats.maxHp), 1, stats.maxHp),
+    spirit: clampNumber(safeNumber(player?.spirit, stats.maxSpirit), 0, stats.maxSpirit),
+    age: Math.max(1, Math.floor(age)),
+    lifespan: Math.max(1, Math.floor(lifespan)),
+    mindValue: clampNumber(safeNumber(player?.mindValue, moodToMindValue(player?.mood)), 0, 100),
+    comprehension: Math.max(0, safeNumber(player?.comprehension, 10)),
+    injuryStacks: Math.max(0, Math.floor(safeNumber(player?.injuryStacks, 0))),
+    instabilityStacks: Math.max(0, Math.floor(safeNumber(player?.instabilityStacks, 0))),
+    spiritStones: Math.max(0, Math.floor(safeNumber(player?.spiritStones, 120))),
+    stats,
+    skillIds,
+    combatLoadout: normalizeCombatLoadout({ ...player, skillIds }),
+    team: (player?.team ?? []).map((member) => ({
+      ...member,
+      stats: normalizeStats(member.stats, { ...starterStats, dodge: getDefaultDodge(member.kind) }),
+    })),
+    unlocks: player?.unlocks ?? realm.unlocks,
+    dailyCultivationCount: Math.max(0, Math.floor(safeNumber(player?.dailyCultivationCount, 0))),
+  };
+}
+
+export function calculateBreakthroughRatePct(game: GameState, nextRealm = getNextRealm(game.player.realmId)): number {
+  if (!nextRealm) {
+    return 0;
+  }
+  const player = game.player;
+  const agePenalty = Math.max(0, player.age / Math.max(1, player.lifespan) - 0.8) * 25;
+  return clampNumber(
+    nextRealm.successRate * 100 +
+      (player.mindValue - 50) * 0.35 +
+      (player.comprehension - 10) * 1.2 -
+      player.injuryStacks * 3 -
+      player.instabilityStacks * 4 -
+      agePenalty,
+    5,
+    95,
+  );
+}
+
+function safeNumber(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function moodToMindValue(mood: string | undefined): number {
+  return mood === "略有波动" ? 44 : 50;
+}
+
 export function createNewGame(name: string): GameState {
+  const starterRealm = getRealm("qi_early");
+  const initialStats = normalizeStats(starterRealm.baseStats);
+  const starterWeapon = createEquipmentInstance("rough_iron_sword", { id: "starter_weapon" });
+  const starterRobe = createEquipmentInstance("cloth_robe", { id: "starter_robe" });
+  const starterShoes = createEquipmentInstance("cloth_shoes", { id: "starter_shoes" });
+  const starterEquipmentItems = [starterWeapon, starterRobe, starterShoes].filter((item) => item !== null);
+
   return {
     player: {
       name,
       realmId: "qi_early",
       cultivation: 0,
-      power: 96,
-      lifespanCurrent: 18,
-      lifespanMax: 120,
-      mood: "稳定",
+      hp: initialStats.maxHp,
+      spirit: initialStats.maxSpirit,
+      age: 18,
+      lifespan: starterRealm.lifespan,
+      mindValue: 50,
+      comprehension: 10,
+      injuryStacks: 0,
+      instabilityStacks: 0,
       spiritStones: 120,
-      stats: starterStats,
+      stats: initialStats,
       skillIds: ["basic_strike", "qi_slash", "rejuvenation"],
       combatLoadout: defaultCombatLoadout,
       team: [],
@@ -117,13 +181,14 @@ export function createNewGame(name: string): GameState {
         beast_bone: 0,
       },
       equipment: {
-        weapon: "rough_iron_sword",
-        robe: "cloth_robe",
+        weapon: starterWeapon?.id ?? null,
+        robe: starterRobe?.id ?? null,
         crown: null,
-        shoes: "cloth_shoes",
+        shoes: starterShoes?.id ?? null,
         accessory: null,
         treasure: null,
       },
+      equipmentItems: starterEquipmentItems,
     },
     world: {
       regionId: "central",
@@ -136,6 +201,7 @@ export function createNewGame(name: string): GameState {
       tasks: {},
       logs: ["你在青云城外醒来，远处钟声如水，仙途由此开始。"],
       sceneMessage: "选择城中地点，或先去修炼聚气。",
+      navigation: createDefaultGridNavigationState(),
     },
     cave: createDefaultCaveState(),
   };
@@ -154,15 +220,31 @@ export function appendLog(game: GameState, message: string): GameState {
 
 export function addItems(game: GameState, items: ItemAmount[] = []): GameState {
   const nextItems = { ...game.inventory.items };
+  const nextEquipmentItems = [...game.inventory.equipmentItems];
   items.forEach((item) => {
+    const amount = Math.floor(item.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
     const itemId = normalizeItemId(item.itemId);
-    nextItems[itemId] = (nextItems[itemId] ?? 0) + item.amount;
+    const itemConfig = getItem(itemId);
+    if (itemConfig.equipment) {
+      Array.from({ length: amount }).forEach(() => {
+        const instance = createEquipmentInstance(itemId);
+        if (instance) {
+          nextEquipmentItems.push(instance);
+        }
+      });
+      return;
+    }
+    nextItems[itemId] = (nextItems[itemId] ?? 0) + amount;
   });
   return {
     ...game,
     inventory: {
       ...game.inventory,
       items: nextItems,
+      equipmentItems: nextEquipmentItems,
     },
   };
 }
@@ -247,32 +329,34 @@ export function attemptBreakthrough(game: GameState): GameState {
   }
 
   const paidGame = spendCost(game, nextRealm.breakthroughCost);
-  const success = Math.random() <= nextRealm.successRate;
+  const breakthroughRatePct = calculateBreakthroughRatePct(game, nextRealm);
+  const success = Math.random() <= breakthroughRatePct / 100;
   if (!success) {
+    const isMajorBreakthrough = currentRealm.majorRealmId !== nextRealm.majorRealmId;
+    const cultivationRatio = isMajorBreakthrough ? 0.75 : 0.88;
+    const vitalRatio = isMajorBreakthrough ? 0.3 : 0.6;
+    const mindLoss = isMajorBreakthrough ? 12 : 6;
+    const instabilityGain = isMajorBreakthrough ? 2 : 1;
+    const injuryGain = isMajorBreakthrough ? 1 : 0;
     return appendLog(
       {
         ...paidGame,
         player: {
           ...paidGame.player,
-          mood: "略有波动",
-          cultivation: Math.floor(currentRealm.requiredCultivation * 0.82),
+          cultivation: Math.floor(currentRealm.requiredCultivation * cultivationRatio),
+          hp: Math.max(1, Math.floor(paidGame.player.stats.maxHp * vitalRatio)),
+          spirit: Math.floor(paidGame.player.stats.maxSpirit * vitalRatio),
+          mindValue: clampNumber(paidGame.player.mindValue - mindLoss, 0, 100),
+          instabilityStacks: paidGame.player.instabilityStacks + instabilityGain,
+          injuryStacks: paidGame.player.injuryStacks + injuryGain,
         },
       },
-      "灵气逆冲，经脉震荡，突破失败。",
+      isMajorBreakthrough ? "道基反噬，经脉受创，冲击大境界失败。" : "灵气逆冲，经脉震荡，突破失败。",
     );
   }
 
   const mergedUnlocks = Array.from(new Set<UnlockKey>([...paidGame.player.unlocks, ...nextRealm.unlocks]));
-  const nextStats = {
-    ...paidGame.player.stats,
-    maxHp: paidGame.player.stats.maxHp + 56,
-    maxSpirit: paidGame.player.stats.maxSpirit + 16,
-    attack: paidGame.player.stats.attack + 9,
-    defense: paidGame.player.stats.defense + 5,
-    divineSense: paidGame.player.stats.divineSense + 4,
-    speed: paidGame.player.stats.speed + 2,
-    dodge: paidGame.player.stats.dodge + 0.01,
-  };
+  const nextStats = normalizeStats(nextRealm.baseStats);
 
   return appendLog(
     {
@@ -282,8 +366,11 @@ export function attemptBreakthrough(game: GameState): GameState {
         realmId: nextRealm.id,
         cultivation: 0,
         unlocks: mergedUnlocks,
-        power: paidGame.player.power + 180,
-        mood: "稳定",
+        lifespan: nextRealm.lifespan,
+        hp: nextStats.maxHp,
+        spirit: nextStats.maxSpirit,
+        mindValue: clampNumber(paidGame.player.mindValue + 5, 0, 100),
+        instabilityStacks: 0,
         stats: nextStats,
       },
     },
@@ -299,7 +386,7 @@ export function recruitPet(game: GameState): GameState {
     id: "pet_green_fox",
     name: "青羽狐",
     kind: "pet",
-    stats: { maxHp: 150, maxSpirit: 34, attack: 24, defense: 13, divineSense: 8, speed: 24, dodge: 0.09, crit: 0.08 },
+    stats: { maxHp: 150, maxSpirit: 34, attack: 24, defense: 13, divineSense: 8, speed: 24, dodge: 0, crit: 0.08, critDamage: 1.5 },
     skillIds: ["bite", "pounce", "guard_master"],
   };
   return appendLog(
@@ -326,7 +413,7 @@ export function recruitCompanion(game: GameState): GameState {
     id: "companion_gu_qingluo",
     name: "顾青萝",
     kind: "companion",
-    stats: { maxHp: 190, maxSpirit: 52, attack: 29, defense: 16, divineSense: 21, speed: 20, dodge: 0.05, crit: 0.06 },
+    stats: { maxHp: 190, maxSpirit: 52, attack: 29, defense: 16, divineSense: 21, speed: 20, dodge: 0, crit: 0.06, critDamage: 1.5 },
     skillIds: ["basic_strike", "leaf_spell", "rejuvenation"],
   };
   return appendLog(

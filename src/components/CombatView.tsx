@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getSkill } from "../data/skills";
 import { performEscape, performPlayerBasic, performPlayerSkill, performUseItem } from "../game/combatEngine";
+import { getEquippedItem } from "../game/equipment";
 import { defaultCombatLoadout } from "../game/state";
 import type { CombatActor, CombatState, GameState, ItemConfig, SkillConfig } from "../types";
 import { GameIcon, type GameIconName } from "./GameIcon";
@@ -33,8 +34,7 @@ export default function CombatView({
   const loadout = game.player.combatLoadout ?? defaultCombatLoadout;
   const carriedSkills = loadout.skillIds.map((skillId) => getPlayerSkillSlot(skillId, player));
   const divineSkill = getPlayerSkillSlot(loadout.divineSkillId, player);
-  const equippedTreasureId = game.inventory.equipment.treasure;
-  const equippedTreasure = equippedTreasureId ? getItem(equippedTreasureId) : null;
+  const equippedTreasure = getEquippedItem(game, "treasure");
   const pill = loadout.pillItemId ? getItem(loadout.pillItemId) : null;
   const pillAmount = loadout.pillItemId ? game.inventory.items[loadout.pillItemId] ?? 0 : 0;
   const targetPool = selectedSkill ? getTargetPool(combat.allies, combat.enemies, selectedSkill.targetType) : [];
