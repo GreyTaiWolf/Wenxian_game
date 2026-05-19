@@ -30,15 +30,27 @@ export function getDefaultDodge(kind: ActorKind = "player"): number {
 }
 
 export function normalizeStats(stats: Partial<Stats> | undefined, fallback: Partial<Stats> = starterStats): Stats {
+  const safeStatNumber = (value: number | undefined, fallbackValue: number | undefined, starterValue: number): number => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof fallbackValue === "number" && Number.isFinite(fallbackValue)) {
+      return fallbackValue;
+    }
+    return starterValue;
+  };
+
+  const clampRate = (value: number): number => Math.min(1, Math.max(0, value));
+
   return {
-    maxHp: stats?.maxHp ?? fallback.maxHp ?? starterStats.maxHp,
-    maxSpirit: stats?.maxSpirit ?? fallback.maxSpirit ?? starterStats.maxSpirit,
-    attack: stats?.attack ?? fallback.attack ?? starterStats.attack,
-    defense: stats?.defense ?? fallback.defense ?? starterStats.defense,
-    divineSense: stats?.divineSense ?? fallback.divineSense ?? starterStats.divineSense,
-    speed: stats?.speed ?? fallback.speed ?? starterStats.speed,
-    dodge: stats?.dodge ?? fallback.dodge ?? starterStats.dodge,
-    crit: stats?.crit ?? fallback.crit ?? starterStats.crit,
+    maxHp: safeStatNumber(stats?.maxHp, fallback.maxHp, starterStats.maxHp),
+    maxSpirit: safeStatNumber(stats?.maxSpirit, fallback.maxSpirit, starterStats.maxSpirit),
+    attack: safeStatNumber(stats?.attack, fallback.attack, starterStats.attack),
+    defense: safeStatNumber(stats?.defense, fallback.defense, starterStats.defense),
+    divineSense: safeStatNumber(stats?.divineSense, fallback.divineSense, starterStats.divineSense),
+    speed: safeStatNumber(stats?.speed, fallback.speed, starterStats.speed),
+    dodge: clampRate(safeStatNumber(stats?.dodge, fallback.dodge, starterStats.dodge)),
+    crit: clampRate(safeStatNumber(stats?.crit, fallback.crit, starterStats.crit)),
   };
 }
 
