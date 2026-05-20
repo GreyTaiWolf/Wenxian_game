@@ -5,7 +5,7 @@ export const itemGradeOrder: ItemGrade[] = ["common", "fine", "superior", "rare"
 export const itemGradeLabels: Record<ItemGrade, string> = {
   common: "凡品",
   fine: "良品",
-  superior: "上品",
+  superior: "精品",
   rare: "珍品",
   spirit: "灵品",
   earth: "地品",
@@ -43,7 +43,7 @@ export const itemGradeMetas: Record<
   common: { label: "凡品", hex: "#C8CDD6", priceMultiplier: 1, effectMultiplier: 1, affixCount: "0-1", specialEffect: "无", tier: 1, tone: "白色朴素边框" },
   fine: { label: "良品", hex: "#45C46B", priceMultiplier: 1.8, effectMultiplier: 1.1, affixCount: "1-2", specialEffect: "无", tier: 2, tone: "绿色灵光" },
   superior: {
-    label: "上品",
+    label: "精品",
     hex: "#4E8DFF",
     priceMultiplier: 3.2,
     effectMultiplier: 1.22,
