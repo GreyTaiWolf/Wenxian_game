@@ -18,7 +18,7 @@ export type MajorRealmId =
   | "post_ascension";
 export type RealmPhaseId = "early" | "middle" | "late" | "peak";
 export type ItemTierId = MajorRealmId;
-export type ItemGrade = "common" | "fine" | "superior" | "rare" | "spirit" | "earth" | "heaven";
+export type ItemGrade = "common" | "fine" | "superior" | "rare" | "spirit" | "earth" | "heaven" | "immortal" | "divine";
 
 export interface ItemAmount {
   itemId: string;
