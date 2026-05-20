@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getSkill } from "../data/skills";
-import { performEscape, performPlayerBasic, performPlayerSkill, performUseItem } from "../game/combatEngine";
+import { canUseArtifactAction, getSkillSpiritCost, performArtifactAction, performEscape, performPlayerBasic, performPlayerSkill, performUseItem } from "../game/combatEngine";
 import { getEquippedItem } from "../game/equipment";
 import { defaultCombatLoadout } from "../game/state";
 import type { CombatActor, CombatState, GameState, ItemConfig, SkillConfig } from "../types";
@@ -34,7 +34,7 @@ export default function CombatView({
   const loadout = game.player.combatLoadout ?? defaultCombatLoadout;
   const carriedSkills = loadout.skillIds.map((skillId) => getPlayerSkillSlot(skillId, player));
   const divineSkill = getPlayerSkillSlot(loadout.divineSkillId, player);
-  const equippedTreasure = getEquippedItem(game, "treasure");
+  const equippedTreasure = getEquippedItem(game, "artifact");
   const pill = loadout.pillItemId ? getItem(loadout.pillItemId) : null;
   const pillAmount = loadout.pillItemId ? game.inventory.items[loadout.pillItemId] ?? 0 : 0;
   const targetPool = selectedSkill ? getTargetPool(combat.allies, combat.enemies, selectedSkill.targetType) : [];
@@ -61,7 +61,7 @@ export default function CombatView({
 
   function renderSkillButton(skill: SkillConfig | null, label: string) {
     const disabled = !canUseSkill(skill, player, playerTurn);
-    const iconName: GameIconName = label === "神通" ? "equipment-treasure" : label.startsWith("武技") ? "combat" : "module-cultivation";
+    const iconName: GameIconName = label === "神通" ? "equipment-artifact" : label.startsWith("武技") ? "combat" : "module-cultivation";
     return (
       <button
         className={`combat-slot ${skill ? "" : "empty"}`}
@@ -82,7 +82,7 @@ export default function CombatView({
           {label}
         </span>
         <strong>{skill?.name ?? "空槽"}</strong>
-        <small>{skill ? (skill.spiritCost ? `${skill.spiritCost} 灵力` : "无消耗") : "未携带"}</small>
+        <small>{skill ? (getSkillSpiritCost(player, skill) ? `${getSkillSpiritCost(player, skill)} 灵力` : "无消耗") : "未携带"}</small>
       </button>
     );
   }
@@ -101,14 +101,15 @@ export default function CombatView({
   }
 
   function renderTreasureButton() {
+    const artifactReady = playerTurn && canUseArtifactAction(game);
     return (
-      <button className={`combat-slot utility ${equippedTreasure ? `grade-card grade-${equippedTreasure.grade}` : "empty"}`} disabled>
+      <button className={`combat-slot utility ${equippedTreasure ? `grade-card grade-${equippedTreasure.grade}` : "empty"}`} disabled={!artifactReady} onClick={() => onChange(performArtifactAction(game))}>
         <span>
-          <GameIcon name="equipment-treasure" size={15} />
+          <GameIcon name="equipment-artifact" size={15} />
           法宝
         </span>
         <strong className={equippedTreasure ? getGradeNameClass(equippedTreasure) : ""}>{equippedTreasure ? formatItemName(equippedTreasure) : "空槽"}</strong>
-        <small>{equippedTreasure ? "暂未激活战斗效果" : "未装备"}</small>
+        <small>{equippedTreasure ? (artifactReady ? "可催动" : "被动生效") : "未装备"}</small>
       </button>
     );
   }
@@ -223,7 +224,7 @@ function getPlayerSkillSlot(skillId: string | null, player?: CombatActor): Skill
 }
 
 function canUseSkill(skill: SkillConfig | null, player: CombatActor | undefined, playerTurn: boolean): boolean {
-  return Boolean(skill && playerTurn && player && player.spirit >= skill.spiritCost);
+  return Boolean(skill && playerTurn && player && player.spirit >= getSkillSpiritCost(player, skill));
 }
 
 function ActorColumn({ title, actors }: { title: string; actors: CombatActor[] }) {

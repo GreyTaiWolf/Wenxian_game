@@ -1,9 +1,11 @@
 import type { GridCoord, GridDestinationKind, GridDestinationZone } from "../types";
 import {
+  CENTRAL_GRID_MAP_ID,
   GRID_MAP_HEIGHT,
   GRID_MAP_WIDTH,
   SOUTH_RIDGE_GRID_MAP_ID,
   WORLD_GRID_MAP_ID,
+  centralLocationCoords,
   southRidgeLocationCoords,
   worldProvincePortals,
 } from "./gridMaps";
@@ -17,18 +19,19 @@ interface ZoneShape {
 
 export const worldProvinceZoneShape: ZoneShape = { width: 3, height: 3 };
 
-export const southRidgeZoneShapes: Record<LocationNode["type"], ZoneShape> = {
-  city: { width: 3, height: 3 },
-  town: { width: 3, height: 3 },
-  wild: { width: 3, height: 2 },
-  secret: { width: 3, height: 1 },
+export const regionLocationZoneShapes: Record<LocationNode["type"], ZoneShape> = {
+  city: { width: 1, height: 1 },
+  town: { width: 1, height: 1 },
+  wild: { width: 1, height: 1 },
+  secret: { width: 1, height: 1 },
 };
 
 export const smallEntranceZoneShape: ZoneShape = { width: 1, height: 2 };
 
 export const gridDestinationZones: GridDestinationZone[] = [
   ...worldProvinces.map(createWorldProvinceZone),
-  ...getRegion("south_ridge").locations.map(createSouthRidgeLocationZone),
+  ...getRegion("central").locations.map((location) => createRegionLocationZone(location, "central", CENTRAL_GRID_MAP_ID, centralLocationCoords)),
+  ...getRegion("south_ridge").locations.map((location) => createRegionLocationZone(location, "south_ridge", SOUTH_RIDGE_GRID_MAP_ID, southRidgeLocationCoords)),
 ];
 
 export function getGridDestinationZones(mapId: string): GridDestinationZone[] {
@@ -68,12 +71,17 @@ function createWorldProvinceZone(province: WorldProvince): GridDestinationZone {
   };
 }
 
-function createSouthRidgeLocationZone(location: LocationNode): GridDestinationZone {
-  const anchor = southRidgeLocationCoords[location.id];
-  const shape = southRidgeZoneShapes[location.type];
+function createRegionLocationZone(
+  location: LocationNode,
+  regionId: string,
+  mapId: string,
+  locationCoords: Record<string, GridCoord>,
+): GridDestinationZone {
+  const anchor = locationCoords[location.id];
+  const shape = regionLocationZoneShapes[location.type];
   return {
-    mapId: SOUTH_RIDGE_GRID_MAP_ID,
-    zoneId: `south_ridge:location:${location.id}`,
+    mapId,
+    zoneId: `${regionId}:location:${location.id}`,
     kind: "location",
     targetId: location.id,
     anchor,

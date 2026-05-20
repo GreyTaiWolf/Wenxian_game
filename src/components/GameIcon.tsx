@@ -47,11 +47,13 @@ export type GameIconName =
   | "combat"
   | "combat-log"
   | "equipment"
-  | "equipment-accessory"
-  | "equipment-crown"
+  | "equipment-amulet"
+  | "equipment-artifact"
+  | "equipment-boots"
+  | "equipment-helmet"
+  | "equipment-ring"
   | "equipment-robe"
-  | "equipment-shoes"
-  | "equipment-treasure"
+  | "equipment-wrist"
   | "equipment-weapon"
   | "item"
   | "item-material"
@@ -88,11 +90,13 @@ const iconMap: Record<GameIconName, LucideIcon> = {
   combat: Swords,
   "combat-log": ScrollText,
   equipment: Shield,
-  "equipment-accessory": Gem,
-  "equipment-crown": Crown,
+  "equipment-amulet": Gem,
+  "equipment-artifact": WandSparkles,
+  "equipment-boots": Sparkles,
+  "equipment-helmet": Crown,
+  "equipment-ring": CircleDot,
   "equipment-robe": Shirt,
-  "equipment-shoes": Sparkles,
-  "equipment-treasure": WandSparkles,
+  "equipment-wrist": Shield,
   "equipment-weapon": Sword,
   item: Package,
   "item-material": Sprout,

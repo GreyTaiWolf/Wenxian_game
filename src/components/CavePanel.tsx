@@ -111,7 +111,7 @@ export default function CavePanel({ game, onChange }: { game: GameState; onChang
           <Feature icon="system-spirit-field" label="灵田" value="后续开放" />
           <Feature icon="system-alchemy" label="丹炉" value="后续开放" />
           <Feature icon="team" label="灵宠位" value="后续开放" />
-          <Feature icon="equipment-treasure" label="洞府禁制" value="后续开放" />
+          <Feature icon="equipment-artifact" label="洞府禁制" value="后续开放" />
         </div>
       </section>
     </section>

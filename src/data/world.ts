@@ -24,11 +24,22 @@ export interface SceneAction {
   };
 }
 
+export interface SceneHotspot {
+  id: string;
+  label: string;
+  title: string;
+  x: number;
+  y: number;
+  text: string;
+}
+
 export interface SceneNode {
   id: string;
   name: string;
   type: string;
   description: string;
+  imageKey?: string;
+  hotspots?: SceneHotspot[];
   actions: SceneAction[];
 }
 
@@ -246,6 +257,47 @@ export const regions: RegionNode[] = [
             type: "任务",
             description: "城北广场木榜上贴着宗门、城主府和商会发布的差事。",
             actions: [{ id: "open_tasks", label: "查看任务榜", kind: "taskBoard" }],
+          },
+        ],
+      },
+      {
+        id: "tian_xuan_gate",
+        name: "天玄城门",
+        type: "city",
+        description: "中州腹地新显露的巍峨城门，城墙阵纹如星轨交织，门内隐约可见繁盛长街。",
+        scenes: [
+          {
+            id: "tian_xuan_gate",
+            name: "天玄城门",
+            type: "城门",
+            imageKey: "tian_xuan_gate",
+            description: "高阙压云，双旗临风，守门修士在阵纹下核验来往修士的令牌与来历。",
+            hotspots: [
+              {
+                id: "shen_guanlan",
+                label: "沈观澜",
+                title: "城门登记修士",
+                x: 22,
+                y: 78,
+                text: "沈观澜抬笔看你一眼：入天玄城，先登记道号、来处与所修功法。城中不问出身，但问是否守规矩。",
+              },
+              {
+                id: "lu_xuanheng",
+                label: "陆玄衡",
+                title: "天玄守门修士",
+                x: 76,
+                y: 76,
+                text: "陆玄衡按剑立在门侧：城门阵纹能照妖气，也能照杀意。若要入城，收敛锋芒，莫在长街动手。",
+              },
+            ],
+            actions: [
+              {
+                id: "inspect_tian_xuan_gate",
+                label: "查看城门",
+                kind: "dialogue",
+                text: "你驻足望向天玄城门，墙上阵纹缓缓流转，门内人声与车马声隔着灵光传来。",
+              },
+            ],
           },
         ],
       },

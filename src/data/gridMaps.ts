@@ -1,28 +1,40 @@
 import type { GridCell, GridCoord, GridMapData, GridNavigationState } from "../types";
 
 export const WORLD_GRID_MAP_ID = "world";
+export const CENTRAL_GRID_MAP_ID = "region:central";
 export const SOUTH_RIDGE_GRID_MAP_ID = "region:south_ridge";
-export const GRID_MAP_WIDTH = 24;
-export const GRID_MAP_HEIGHT = 16;
-export const GRID_CELL_SIZE = 64;
+export const GRID_NAVIGATION_VERSION = 2;
+export const GRID_MAP_WIDTH = 48;
+export const GRID_MAP_HEIGHT = 32;
+export const GRID_CELL_SIZE = 32;
 
-export const defaultWorldCoord: GridCoord = { x: 11, y: 6 };
-export const defaultSouthRidgeCoord: GridCoord = { x: 12, y: 4 };
+export const defaultWorldCoord: GridCoord = { x: 23, y: 13 };
+export const defaultCentralCoord: GridCoord = { x: 24, y: 15 };
+export const defaultSouthRidgeCoord: GridCoord = { x: 25, y: 9 };
 
 export const worldProvincePortals: Record<string, GridCoord> = {
   central: defaultWorldCoord,
-  south_ridge: { x: 11, y: 11 },
+  south_ridge: { x: 23, y: 23 },
+};
+
+export const centralLocationCoords: Record<string, GridCoord> = {
+  qingyun_city: defaultCentralCoord,
+  tian_xuan_gate: { x: 28, y: 16 },
+  black_wind_mountain: { x: 6, y: 12 },
+  herb_valley: { x: 21, y: 25 },
+  ancient_cave: { x: 34, y: 5 },
+  luoxia_town: { x: 8, y: 24 },
 };
 
 export const southRidgeLocationCoords: Record<string, GridCoord> = {
   wuyao_alliance: defaultSouthRidgeCoord,
-  wood_spirit_sect: { x: 5, y: 3 },
-  baicao_valley: { x: 9, y: 7 },
-  ten_thousand_beast_mountain: { x: 7, y: 5 },
-  miasma_marsh: { x: 4, y: 10 },
-  thousand_falls_cliff: { x: 14, y: 7 },
-  tide_market: { x: 19, y: 7 },
-  returning_tide_reef: { x: 17, y: 12 },
+  wood_spirit_sect: { x: 11, y: 7 },
+  baicao_valley: { x: 19, y: 15 },
+  ten_thousand_beast_mountain: { x: 15, y: 11 },
+  miasma_marsh: { x: 9, y: 21 },
+  thousand_falls_cliff: { x: 29, y: 15 },
+  tide_market: { x: 39, y: 15 },
+  returning_tide_reef: { x: 35, y: 25 },
 };
 
 export const gridMaps: GridMapData[] = [
@@ -30,20 +42,26 @@ export const gridMaps: GridMapData[] = [
     mapId: WORLD_GRID_MAP_ID,
     defaultRegionId: "world",
     blockedRects: [
-      { x: 0, y: 0, width: 24, height: 1 },
-      { x: 0, y: 15, width: 24, height: 1 },
-      { x: 0, y: 0, width: 2, height: 16 },
-      { x: 22, y: 0, width: 2, height: 16 },
-      { x: 17, y: 1, width: 4, height: 3 },
-      { x: 2, y: 11, width: 4, height: 3 },
-      { x: 13, y: 8, width: 4, height: 2 },
+      { x: 0, y: 0, width: 48, height: 2 },
+      { x: 0, y: 30, width: 48, height: 2 },
+      { x: 0, y: 0, width: 4, height: 32 },
+      { x: 44, y: 0, width: 4, height: 32 },
+      { x: 34, y: 2, width: 8, height: 6 },
+      { x: 4, y: 22, width: 8, height: 6 },
+      { x: 26, y: 16, width: 8, height: 4 },
     ],
     highCostRects: [
-      { x: 7, y: 9, width: 5, height: 3, movementCost: 2 },
-      { x: 9, y: 3, width: 4, height: 2, movementCost: 2 },
+      { x: 14, y: 18, width: 10, height: 6, movementCost: 2 },
+      { x: 18, y: 6, width: 8, height: 4, movementCost: 2 },
     ],
     portals: [
-      { coord: worldProvincePortals.central, regionId: "central" },
+      {
+        coord: worldProvincePortals.central,
+        regionId: "central",
+        portalTargetMapId: CENTRAL_GRID_MAP_ID,
+        portalTargetX: defaultCentralCoord.x,
+        portalTargetY: defaultCentralCoord.y,
+      },
       {
         coord: worldProvincePortals.south_ridge,
         regionId: "south_ridge",
@@ -54,23 +72,47 @@ export const gridMaps: GridMapData[] = [
     ],
   }),
   createGridMap({
+    mapId: CENTRAL_GRID_MAP_ID,
+    defaultRegionId: "central",
+    blockedRects: [
+      { x: 0, y: 0, width: 48, height: 2 },
+      { x: 0, y: 30, width: 48, height: 2 },
+      { x: 0, y: 0, width: 2, height: 32 },
+      { x: 46, y: 0, width: 2, height: 32 },
+      { x: 2, y: 4, width: 8, height: 5 },
+      { x: 15, y: 2, width: 8, height: 4 },
+      { x: 36, y: 2, width: 8, height: 5 },
+      { x: 37, y: 22, width: 7, height: 6 },
+      { x: 3, y: 24, width: 4, height: 4 },
+    ],
+    highCostRects: [
+      { x: 13, y: 10, width: 10, height: 5, movementCost: 2 },
+      { x: 26, y: 16, width: 8, height: 6, movementCost: 2 },
+      { x: 18, y: 22, width: 8, height: 6, movementCost: 2 },
+    ],
+    portals: Object.entries(centralLocationCoords).map(([locationId, coord]) => ({
+      coord,
+      regionId: `location:${locationId}`,
+    })),
+  }),
+  createGridMap({
     mapId: SOUTH_RIDGE_GRID_MAP_ID,
     defaultRegionId: "south_ridge",
     blockedRects: [
-      { x: 0, y: 0, width: 24, height: 1 },
-      { x: 0, y: 15, width: 24, height: 1 },
-      { x: 0, y: 0, width: 1, height: 16 },
-      { x: 23, y: 0, width: 1, height: 16 },
-      { x: 1, y: 1, width: 3, height: 3 },
-      { x: 20, y: 1, width: 3, height: 4 },
-      { x: 11, y: 8, width: 3, height: 3 },
-      { x: 5, y: 12, width: 4, height: 2 },
-      { x: 15, y: 3, width: 2, height: 3 },
+      { x: 0, y: 0, width: 48, height: 2 },
+      { x: 0, y: 30, width: 48, height: 2 },
+      { x: 0, y: 0, width: 2, height: 32 },
+      { x: 46, y: 0, width: 2, height: 32 },
+      { x: 2, y: 2, width: 6, height: 6 },
+      { x: 40, y: 2, width: 6, height: 8 },
+      { x: 22, y: 16, width: 6, height: 6 },
+      { x: 10, y: 24, width: 8, height: 4 },
+      { x: 30, y: 6, width: 4, height: 6 },
     ],
     highCostRects: [
-      { x: 3, y: 8, width: 4, height: 4, movementCost: 3 },
-      { x: 16, y: 11, width: 4, height: 3, movementCost: 2 },
-      { x: 8, y: 5, width: 4, height: 3, movementCost: 2 },
+      { x: 6, y: 16, width: 8, height: 8, movementCost: 3 },
+      { x: 32, y: 22, width: 8, height: 6, movementCost: 2 },
+      { x: 16, y: 10, width: 8, height: 6, movementCost: 2 },
     ],
     portals: Object.entries(southRidgeLocationCoords).map(([locationId, coord]) => ({
       coord,
@@ -84,6 +126,9 @@ export function getGridMapData(mapId: string): GridMapData | undefined {
 }
 
 export function getRegionGridMapId(regionId: string): string | undefined {
+  if (regionId === "central") {
+    return CENTRAL_GRID_MAP_ID;
+  }
   if (regionId === "south_ridge") {
     return SOUTH_RIDGE_GRID_MAP_ID;
   }
@@ -95,13 +140,19 @@ export function getWorldProvincePortalCoord(provinceId: string): GridCoord | und
 }
 
 export function getRegionLocationGridCoord(regionId: string, locationId: string): GridCoord | undefined {
-  if (regionId !== "south_ridge") {
-    return undefined;
+  if (regionId === "central") {
+    return centralLocationCoords[locationId];
   }
-  return southRidgeLocationCoords[locationId];
+  if (regionId === "south_ridge") {
+    return southRidgeLocationCoords[locationId];
+  }
+  return undefined;
 }
 
 export function getDefaultGridCoord(mapId: string): GridCoord {
+  if (mapId === CENTRAL_GRID_MAP_ID) {
+    return defaultCentralCoord;
+  }
   if (mapId === SOUTH_RIDGE_GRID_MAP_ID) {
     return defaultSouthRidgeCoord;
   }
@@ -110,9 +161,11 @@ export function getDefaultGridCoord(mapId: string): GridCoord {
 
 export function createDefaultGridNavigationState(activeMapId = WORLD_GRID_MAP_ID): GridNavigationState {
   return {
+    mapVersion: GRID_NAVIGATION_VERSION,
     activeMapId,
     positions: {
       [WORLD_GRID_MAP_ID]: defaultWorldCoord,
+      [CENTRAL_GRID_MAP_ID]: defaultCentralCoord,
       [SOUTH_RIDGE_GRID_MAP_ID]: defaultSouthRidgeCoord,
     },
   };
@@ -121,19 +174,18 @@ export function createDefaultGridNavigationState(activeMapId = WORLD_GRID_MAP_ID
 export function normalizeGridNavigationState(raw: Partial<GridNavigationState> | undefined): GridNavigationState {
   const defaults = createDefaultGridNavigationState(raw?.activeMapId ?? WORLD_GRID_MAP_ID);
   const positions = { ...defaults.positions };
+  const shouldMigrateLegacyCoords = raw?.mapVersion !== GRID_NAVIGATION_VERSION;
 
   Object.entries(raw?.positions ?? {}).forEach(([mapId, coord]) => {
     const map = getGridMapData(mapId);
     if (!map || typeof coord?.x !== "number" || typeof coord?.y !== "number") {
       return;
     }
-    positions[mapId] = {
-      x: Math.min(map.width - 1, Math.max(0, Math.floor(coord.x))),
-      y: Math.min(map.height - 1, Math.max(0, Math.floor(coord.y))),
-    };
+    positions[mapId] = normalizeGridCoordForVersion(map, coord, shouldMigrateLegacyCoords);
   });
 
   return {
+    mapVersion: GRID_NAVIGATION_VERSION,
     activeMapId: getGridMapData(raw?.activeMapId ?? "") ? raw?.activeMapId ?? WORLD_GRID_MAP_ID : WORLD_GRID_MAP_ID,
     positions,
   };
@@ -204,4 +256,19 @@ function createGridMap({
 
 function isCoordInRect(coord: GridCoord, rect: Rect): boolean {
   return coord.x >= rect.x && coord.x < rect.x + rect.width && coord.y >= rect.y && coord.y < rect.y + rect.height;
+}
+
+function normalizeGridCoordForVersion(map: GridMapData, coord: GridCoord, shouldMigrateLegacyCoords: boolean): GridCoord {
+  const nextCoord = shouldMigrateLegacyCoords ? migrateLegacyGridCoord(coord) : coord;
+  return {
+    x: Math.min(map.width - 1, Math.max(0, Math.floor(nextCoord.x))),
+    y: Math.min(map.height - 1, Math.max(0, Math.floor(nextCoord.y))),
+  };
+}
+
+function migrateLegacyGridCoord(coord: GridCoord): GridCoord {
+  return {
+    x: Math.floor(coord.x) * 2 + 1,
+    y: Math.floor(coord.y) * 2 + 1,
+  };
 }

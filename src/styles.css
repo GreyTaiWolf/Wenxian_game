@@ -23,15 +23,15 @@
   --danger: #f87171;
   --spirit: #38bdf8;
   --success: #34d399;
-  --grade-common: #c8cdd6;
-  --grade-fine: #45c46b;
-  --grade-superior: #4e8dff;
-  --grade-rare: #a56dff;
-  --grade-spirit: #ff9a3d;
-  --grade-earth: #ffd86b;
-  --grade-heaven: #ff6b6b;
-  --grade-immortal: #eaf7ff;
-  --grade-divine: #ffc857;
+  --grade-fan: #c8cdd6;
+  --grade-liang: #45c46b;
+  --grade-jing: #4e8dff;
+  --grade-ling: #a56dff;
+  --grade-xuan: #ff9a3d;
+  --grade-di: #ff5e6a;
+  --grade-tian: #ffd45a;
+  --grade-xian: #fff2b2;
+  --grade-shen: #ffcc88;
   --jade: var(--primary);
   --jade-strong: var(--primary-strong);
   --red: var(--danger);
@@ -1049,17 +1049,28 @@ small {
 
 .equipment-slot-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .equipment-slot-card {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 10px;
+  padding: 7px;
+}
+
+.equipment-slot-card.clickable {
+  cursor: pointer;
+}
+
+.equipment-slot-card.clickable:hover,
+.equipment-slot-card.clickable:focus-visible {
+  border-color: rgba(94, 234, 212, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.12);
 }
 
 .equipment-slot-card.filled {
@@ -1073,30 +1084,25 @@ small {
 
 .equipment-slot-card div {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
 .equipment-slot-card strong {
   overflow: hidden;
   color: #f7fff9;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .equipment-slot-card span {
-  display: -webkit-box;
+  display: block;
   overflow: hidden;
   color: #c6d8cf;
-  font-size: 12px;
-  line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.equipment-slot-card button {
-  min-height: 42px;
-  padding: 0 10px;
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1252,49 +1258,58 @@ small {
   text-align: center;
 }
 
+.grade-fan,
 .grade-common {
-  --grade-color: var(--grade-common);
+  --grade-color: var(--grade-fan);
   --grade-glow: rgba(174, 183, 196, 0.2);
 }
 
+.grade-liang,
 .grade-fine {
-  --grade-color: var(--grade-fine);
+  --grade-color: var(--grade-liang);
   --grade-glow: rgba(69, 196, 107, 0.28);
 }
 
+.grade-jing,
 .grade-superior {
-  --grade-color: var(--grade-superior);
+  --grade-color: var(--grade-jing);
   --grade-glow: rgba(78, 141, 255, 0.34);
 }
 
+.grade-ling,
 .grade-rare,
 .grade-mystic {
-  --grade-color: var(--grade-rare);
+  --grade-color: var(--grade-ling);
   --grade-glow: rgba(165, 109, 255, 0.38);
 }
 
+.grade-xuan,
 .grade-spirit {
-  --grade-color: var(--grade-spirit);
+  --grade-color: var(--grade-xuan);
   --grade-glow: rgba(255, 154, 61, 0.42);
 }
 
+.grade-di,
 .grade-earth {
-  --grade-color: var(--grade-earth);
-  --grade-glow: rgba(255, 216, 107, 0.38);
+  --grade-color: var(--grade-di);
+  --grade-glow: rgba(255, 94, 106, 0.42);
 }
 
+.grade-tian,
 .grade-heaven {
-  --grade-color: var(--grade-heaven);
-  --grade-glow: rgba(255, 107, 107, 0.45);
+  --grade-color: var(--grade-tian);
+  --grade-glow: rgba(255, 212, 90, 0.45);
 }
 
+.grade-xian,
 .grade-immortal {
-  --grade-color: var(--grade-immortal);
+  --grade-color: var(--grade-xian);
   --grade-glow: rgba(218, 238, 255, 0.48);
 }
 
+.grade-shen,
 .grade-divine {
-  --grade-color: var(--grade-divine);
+  --grade-color: var(--grade-shen);
   --grade-glow: rgba(255, 160, 64, 0.56);
 }
 
@@ -1317,11 +1332,19 @@ small {
   opacity: 0.78;
 }
 
+.motion-on .grade-card.grade-ling::after,
+.motion-on .grade-card.grade-xuan::after,
+.motion-on .grade-card.grade-di::after,
+.motion-on .grade-card.grade-tian::after,
 .motion-on .grade-card.grade-rare::after,
 .motion-on .grade-card.grade-mystic::after,
 .motion-on .grade-card.grade-spirit::after,
 .motion-on .grade-card.grade-earth::after,
 .motion-on .grade-card.grade-heaven::after,
+.motion-on .grade-badge.grade-ling::after,
+.motion-on .grade-badge.grade-xuan::after,
+.motion-on .grade-badge.grade-di::after,
+.motion-on .grade-badge.grade-tian::after,
 .motion-on .grade-badge.grade-rare::after,
 .motion-on .grade-badge.grade-mystic::after,
 .motion-on .grade-badge.grade-spirit::after,
@@ -1339,32 +1362,39 @@ small {
   animation: grade-sweep 3.8s ease-in-out infinite;
 }
 
+.motion-on .grade-card.grade-ling,
+.motion-on .grade-card.grade-xuan,
 .motion-on .grade-card.grade-rare,
 .motion-on .grade-card.grade-mystic,
 .motion-on .grade-card.grade-spirit {
   animation: grade-pulse 2.8s ease-in-out infinite;
 }
 
+.motion-on .grade-card.grade-di,
 .motion-on .grade-card.grade-earth,
 .motion-on .grade-badge.grade-earth {
   animation: grade-gold-pulse 2.6s ease-in-out infinite;
 }
 
+.motion-on .grade-card.grade-tian,
 .motion-on .grade-card.grade-heaven,
 .motion-on .grade-badge.grade-heaven {
   animation: grade-heaven-flare 2.2s ease-in-out infinite;
 }
 
+.motion-on .grade-card.grade-xian,
 .motion-on .grade-card.grade-immortal,
 .motion-on .grade-badge.grade-immortal {
   animation: grade-immortal-aura 3.6s ease-in-out infinite;
 }
 
+.motion-on .grade-card.grade-shen,
 .motion-on .grade-card.grade-divine,
 .motion-on .grade-badge.grade-divine {
   animation: grade-divine-core 3.8s ease-in-out infinite;
 }
 
+.motion-on .grade-card.grade-shen::before,
 .motion-on .grade-card.grade-divine::before,
 .motion-on .grade-badge.grade-divine::before {
   background:
@@ -1372,6 +1402,7 @@ small {
     linear-gradient(120deg, rgba(255, 106, 61, 0.16), rgba(255, 61, 138, 0.14), rgba(122, 92, 255, 0.14));
 }
 
+.motion-on .grade-card.grade-shen::after,
 .motion-on .grade-card.grade-divine::after,
 .motion-on .grade-badge.grade-divine::after {
   position: absolute;
@@ -1420,14 +1451,6 @@ small {
   color: inherit;
   font-size: 12px;
   letter-spacing: 0.02em;
-}
-
-.grade-chip i {
-  color: inherit;
-  font-size: 9px;
-  font-style: normal;
-  letter-spacing: -0.03em;
-  opacity: 0.88;
 }
 
 .grade-chip.compact {
@@ -1611,8 +1634,13 @@ small {
 .equipment-slot-meta {
   display: flex !important;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.equipment-slot-meta .grade-chip.compact {
+  display: none;
 }
 
 .equipment-page-controls {
@@ -1670,6 +1698,9 @@ small {
     rgba(17, 23, 34, 0.98);
 }
 
+.item-detail-card.grade-xuan,
+.item-detail-card.grade-di,
+.item-detail-card.grade-tian,
 .item-detail-card.grade-spirit,
 .item-detail-card.grade-earth,
 .item-detail-card.grade-heaven {
@@ -1687,6 +1718,7 @@ small {
   -webkit-line-clamp: 2;
 }
 
+.item-detail-card.grade-tian .item-detail-head h2,
 .item-detail-card.grade-heaven .item-detail-head h2 {
   color: #fff7ed;
   text-shadow: 0 0 18px rgba(255, 107, 107, 0.9), 0 0 28px rgba(246, 196, 83, 0.6);
@@ -2407,6 +2439,90 @@ small {
   margin-top: 6px;
   color: #fff;
   font-size: 17px;
+}
+
+.scene-visual-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(208, 229, 218, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.48);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.3);
+}
+
+.scene-visual {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.scene-hotspot-button {
+  position: absolute;
+  left: var(--hotspot-x);
+  top: var(--hotspot-y);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 4px 9px;
+  transform: translate(-50%, -100%);
+  border: 1px solid rgba(248, 217, 139, 0.58);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.72);
+  box-shadow: 0 0 18px rgba(248, 217, 139, 0.16);
+  color: #fff3bd;
+  font-size: 12px;
+  font-weight: 800;
+  backdrop-filter: blur(4px);
+}
+
+.scene-hotspot-button::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--gold);
+  box-shadow: 0 0 10px rgba(248, 217, 139, 0.75);
+}
+
+.scene-hotspot-button span {
+  white-space: nowrap;
+}
+
+button.scene-hotspot-button:not(:disabled):hover,
+button.scene-hotspot-button:focus-visible {
+  border-color: rgba(94, 234, 212, 0.72);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.14), 0 0 20px rgba(248, 217, 139, 0.24);
+  transform: translate(-50%, -100%);
+}
+
+.scene-dialogue-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: end center;
+  padding: 18px;
+  background: rgba(2, 6, 23, 0.68);
+  backdrop-filter: blur(6px);
+}
+
+.scene-dialogue-card {
+  width: min(100%, 420px);
+  padding: 14px;
+  border: 1px solid rgba(208, 229, 218, 0.18);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.96));
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.44);
+}
+
+.scene-dialogue-card p {
+  margin-top: 10px;
+  color: #dce9e3;
+  line-height: 1.65;
 }
 
 .scene-card p {

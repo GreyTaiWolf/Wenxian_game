@@ -123,7 +123,7 @@ export default function CultivationPanel({
           功法
         </button>
         <button disabled>
-          <GameIcon name="equipment-treasure" size={15} />
+          <GameIcon name="equipment-artifact" size={15} />
           神通
         </button>
         <button disabled>

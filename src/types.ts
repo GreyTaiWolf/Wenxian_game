@@ -4,21 +4,54 @@ export type ActorKind = "player" | "companion" | "enemyCultivator" | "pet" | "be
 export type SkillCategory = "cultivator" | "beast";
 export type TargetType = "enemySingle" | "enemyAll" | "allySingle" | "allyAll" | "self";
 export type EffectType = "damage" | "heal" | "shield" | "reduceDamage" | "restoreSpirit" | "control";
-export type EquipmentSlotId = "weapon" | "robe" | "crown" | "shoes" | "accessory" | "treasure";
+export type SkillHitType = "fullDodge" | "halfDodge" | "noDodge";
+export type EquipmentSlotId = "weapon" | "robe" | "helmet" | "wrist" | "boots" | "ring" | "amulet" | "artifact";
 export type MajorRealmId =
   | "mortal"
-  | "qi_refining"
+  | "qi"
   | "foundation"
-  | "core_formation"
-  | "nascent_soul"
-  | "spirit_transformation"
-  | "void_refining"
-  | "body_integration"
+  | "core"
+  | "nascent"
+  | "deity"
+  | "void"
+  | "integration"
   | "mahayana"
-  | "post_ascension";
+  | "tribulation";
 export type RealmPhaseId = "early" | "middle" | "late" | "peak";
 export type ItemTierId = MajorRealmId;
-export type ItemGrade = "common" | "fine" | "superior" | "rare" | "spirit" | "earth" | "heaven" | "immortal" | "divine";
+export type ItemGrade = "fan" | "liang" | "jing" | "ling" | "xuan" | "di" | "tian" | "xian" | "shen";
+export type AffixCategory = "attack" | "defense" | "resource" | "speed" | "dodge" | "crit" | "spiritSense" | "special";
+export type AffixValueType = "flat" | "percent" | "multiplier" | "special";
+export type EquipmentSpecialEffect =
+  | "on_hit_fire"
+  | "on_hit_thunder"
+  | "double_strike"
+  | "execute_low_hp"
+  | "armor_break_pct"
+  | "damage_reduce_pct"
+  | "start_shield"
+  | "low_hp_guard"
+  | "counter_chance"
+  | "mp_recover_turn"
+  | "mp_cost_reduce"
+  | "battle_end_recover"
+  | "initiative_bonus"
+  | "escape_rate"
+  | "after_dodge_speed"
+  | "after_hit_dodge"
+  | "perfect_dodge_proc"
+  | "crit_restore_mp"
+  | "crit_extra_hit"
+  | "crit_ignore_def"
+  | "spell_hit_bonus"
+  | "ignore_dodge_pct"
+  | "spirit_suppress"
+  | "soul_lock"
+  | "revive_once"
+  | "domain_guard"
+  | "domain_skill"
+  | "active_skill"
+  | "unique_law";
 
 export interface ItemAmount {
   itemId: string;
@@ -29,6 +62,14 @@ export interface ItemAffix {
   id: string;
   name: string;
   description: string;
+  category?: AffixCategory;
+  stat?: keyof Stats | "attackPct" | "defensePct" | "maxHpPct" | "maxSpiritPct" | "spiritSensePct" | "speedPct" | "skillDamagePct";
+  type?: AffixValueType;
+  value?: number;
+  effect?: EquipmentSpecialEffect;
+  special?: boolean;
+  exclusive?: boolean;
+  unique?: boolean;
 }
 
 export interface Cost {
@@ -55,6 +96,7 @@ export interface SkillConfig {
   category: SkillCategory;
   allowedUsers: ActorKind[];
   targetType: TargetType;
+  hitType: SkillHitType;
   spiritCost: number;
   power: number;
   effectType: EffectType;
@@ -68,10 +110,10 @@ export interface Stats {
   maxSpirit: number;
   attack: number;
   defense: number;
-  divineSense: number;
+  spiritSense: number;
   speed: number;
-  dodge: number;
-  crit: number;
+  dodgeRate: number;
+  critRate: number;
   critDamage: number;
 }
 
@@ -110,12 +152,27 @@ export interface ItemConfig {
   };
 }
 
+export interface EquipmentSealState {
+  sealed: boolean;
+  mainStatMultiplier: number;
+  affixesSealed: boolean;
+  reason?: string;
+}
+
 export interface EquipmentInstance {
   id: string;
   itemId: string;
+  name: string;
+  displayName: string;
+  realmTier: ItemTierId;
+  realmPhase: RealmPhaseId;
+  quality: ItemGrade;
+  slot: EquipmentSlotId;
+  mainStats: EquipmentBonus;
   bonuses: EquipmentBonus;
   powerBonus: number;
   affixes: ItemAffix[];
+  seal?: EquipmentSealState;
   createdAt: string;
 }
 
@@ -198,6 +255,7 @@ export interface GridDestinationZone {
 }
 
 export interface GridNavigationState {
+  mapVersion: number;
   activeMapId: string;
   positions: Record<string, GridCoord>;
 }
@@ -230,9 +288,21 @@ export interface CombatActor extends Stats {
   hp: number;
   spirit: number;
   skillIds: string[];
+  equipmentAffixes?: ItemAffix[];
   defending?: boolean;
   guardedTurns?: number;
   attackDownTurns?: number;
+  shield?: number;
+  burnTurns?: number;
+  burnDamage?: number;
+  speedUpTurns?: number;
+  speedUpAmount?: number;
+  dodgeUpTurns?: number;
+  dodgeUpAmount?: number;
+  reviveReady?: boolean;
+  damageReducePct?: number;
+  spiritSuppressTurns?: number;
+  soulLockedTurns?: number;
 }
 
 export interface CombatReward {
@@ -276,7 +346,7 @@ export interface SettingsState {
 }
 
 export interface RootSave {
-  version: 1;
+  version: 1 | 2;
   recentSlotId: string | null;
   settings: SettingsState;
   slots: Array<SaveSlot | null>;

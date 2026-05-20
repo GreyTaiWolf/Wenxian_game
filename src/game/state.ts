@@ -9,15 +9,15 @@ export const starterStats: Stats = {
   maxSpirit: 48,
   attack: 34,
   defense: 18,
-  divineSense: 15,
+  spiritSense: 0,
   speed: 18,
-  dodge: 0,
-  crit: 0.05,
+  dodgeRate: 0.02,
+  critRate: 0.05,
   critDamage: 1.5,
 };
 
 export function getDefaultDodge(_kind: ActorKind = "player"): number {
-  return 0;
+  return 0.02;
 }
 
 export function normalizeStats(stats: Partial<Stats> | undefined, fallback: Partial<Stats> = starterStats): Stats {
@@ -38,12 +38,16 @@ export function normalizeStats(stats: Partial<Stats> | undefined, fallback: Part
     maxSpirit: safeStatNumber(stats?.maxSpirit, fallback.maxSpirit, starterStats.maxSpirit),
     attack: safeStatNumber(stats?.attack, fallback.attack, starterStats.attack),
     defense: safeStatNumber(stats?.defense, fallback.defense, starterStats.defense),
-    divineSense: safeStatNumber(stats?.divineSense, fallback.divineSense, starterStats.divineSense),
+    spiritSense: safeStatNumber(stats?.spiritSense ?? legacyStat(stats, "divineSense"), fallback.spiritSense, starterStats.spiritSense),
     speed: safeStatNumber(stats?.speed, fallback.speed, starterStats.speed),
-    dodge: 0,
-    crit: clampRate(safeStatNumber(stats?.crit, fallback.crit, starterStats.crit)),
+    dodgeRate: clampRate(safeStatNumber(stats?.dodgeRate ?? legacyStat(stats, "dodge"), fallback.dodgeRate, starterStats.dodgeRate)),
+    critRate: clampRate(safeStatNumber(stats?.critRate ?? legacyStat(stats, "crit"), fallback.critRate, starterStats.critRate)),
     critDamage: Math.max(1, safeStatNumber(stats?.critDamage, fallback.critDamage, starterStats.critDamage)),
   };
+}
+
+function legacyStat(stats: Partial<Stats> | undefined, key: string): number | undefined {
+  return (stats as Record<string, number | undefined> | undefined)?.[key];
 }
 
 export const defaultCombatLoadout: CombatLoadout = {
@@ -108,7 +112,7 @@ export function normalizePlayerState(player: Partial<PlayerState> | undefined): 
     combatLoadout: normalizeCombatLoadout({ ...player, skillIds }),
     team: (player?.team ?? []).map((member) => ({
       ...member,
-      stats: normalizeStats(member.stats, { ...starterStats, dodge: getDefaultDodge(member.kind) }),
+      stats: normalizeStats(member.stats, { ...starterStats, dodgeRate: getDefaultDodge(member.kind) }),
     })),
     unlocks: player?.unlocks ?? realm.unlocks,
     dailyCultivationCount: Math.max(0, Math.floor(safeNumber(player?.dailyCultivationCount, 0))),
@@ -150,8 +154,8 @@ export function createNewGame(name: string): GameState {
   const initialStats = normalizeStats(starterRealm.baseStats);
   const starterWeapon = createEquipmentInstance("rough_iron_sword", { id: "starter_weapon" });
   const starterRobe = createEquipmentInstance("cloth_robe", { id: "starter_robe" });
-  const starterShoes = createEquipmentInstance("cloth_shoes", { id: "starter_shoes" });
-  const starterEquipmentItems = [starterWeapon, starterRobe, starterShoes].filter((item) => item !== null);
+  const starterBoots = createEquipmentInstance("cloth_boots", { id: "starter_boots" });
+  const starterEquipmentItems = [starterWeapon, starterRobe, starterBoots].filter((item) => item !== null);
 
   return {
     player: {
@@ -183,10 +187,12 @@ export function createNewGame(name: string): GameState {
       equipment: {
         weapon: starterWeapon?.id ?? null,
         robe: starterRobe?.id ?? null,
-        crown: null,
-        shoes: starterShoes?.id ?? null,
-        accessory: null,
-        treasure: null,
+        helmet: null,
+        wrist: null,
+        boots: starterBoots?.id ?? null,
+        ring: null,
+        amulet: null,
+        artifact: null,
       },
       equipmentItems: starterEquipmentItems,
     },
@@ -386,7 +392,7 @@ export function recruitPet(game: GameState): GameState {
     id: "pet_green_fox",
     name: "青羽狐",
     kind: "pet",
-    stats: { maxHp: 150, maxSpirit: 34, attack: 24, defense: 13, divineSense: 8, speed: 24, dodge: 0, crit: 0.08, critDamage: 1.5 },
+    stats: { maxHp: 150, maxSpirit: 34, attack: 24, defense: 13, spiritSense: 0, speed: 24, dodgeRate: 0.04, critRate: 0.08, critDamage: 1.5 },
     skillIds: ["bite", "pounce", "guard_master"],
   };
   return appendLog(
@@ -413,7 +419,7 @@ export function recruitCompanion(game: GameState): GameState {
     id: "companion_gu_qingluo",
     name: "顾青萝",
     kind: "companion",
-    stats: { maxHp: 190, maxSpirit: 52, attack: 29, defense: 16, divineSense: 21, speed: 20, dodge: 0, crit: 0.06, critDamage: 1.5 },
+    stats: { maxHp: 190, maxSpirit: 52, attack: 29, defense: 16, spiritSense: 0, speed: 20, dodgeRate: 0.025, critRate: 0.06, critDamage: 1.5 },
     skillIds: ["basic_strike", "leaf_spell", "rejuvenation"],
   };
   return appendLog(

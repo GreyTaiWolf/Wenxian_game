@@ -1,33 +1,39 @@
 import { getItem, itemGradeMetas, normalizeInventoryItemId, normalizeItemId } from "../data/items";
-import { getRealm, isRealmStageAtLeast } from "../data/progression";
+import { getRealm, majorRealmOrder } from "../data/progression";
 import { calculateRealmPower } from "./derived";
-import type { EquipmentBonus, EquipmentInstance, EquipmentSlotId, GameState, InventoryState, ItemAffix, ItemConfig, Stats } from "../types";
+import { capFinalStats } from "./equipmentBalanceLimits";
+import { generateEquipment, getMajorRealmRank } from "./generateEquipment";
+import type { EquipmentBonus, EquipmentInstance, EquipmentSealState, EquipmentSlotId, GameState, InventoryState, ItemAffix, ItemConfig, MajorRealmId, Stats } from "../types";
 
 export const equipmentSlots: Array<{ id: EquipmentSlotId; label: string; emptyLabel: string }> = [
   { id: "weapon", label: "武器", emptyLabel: "未持兵刃" },
-  { id: "robe", label: "衣服", emptyLabel: "未着法衣" },
-  { id: "crown", label: "头冠", emptyLabel: "未戴头冠" },
-  { id: "shoes", label: "鞋履", emptyLabel: "未穿鞋履" },
-  { id: "accessory", label: "饰品", emptyLabel: "未佩饰品" },
-  { id: "treasure", label: "法宝", emptyLabel: "未祭法宝" },
+  { id: "robe", label: "法袍", emptyLabel: "未着法袍" },
+  { id: "helmet", label: "头冠", emptyLabel: "未戴头冠" },
+  { id: "wrist", label: "护腕", emptyLabel: "未佩护腕" },
+  { id: "boots", label: "鞋履", emptyLabel: "未穿鞋履" },
+  { id: "ring", label: "戒指", emptyLabel: "未戴戒指" },
+  { id: "amulet", label: "护符", emptyLabel: "未佩护符" },
+  { id: "artifact", label: "法宝", emptyLabel: "未祭法宝" },
 ];
 
 export const emptyEquipment: InventoryState["equipment"] = {
   weapon: null,
   robe: null,
-  crown: null,
-  shoes: null,
-  accessory: null,
-  treasure: null,
+  helmet: null,
+  wrist: null,
+  boots: null,
+  ring: null,
+  amulet: null,
+  artifact: null,
 };
 
 const legacyEquipmentMap: Record<string, string | null> = {
   粗铁剑: "rough_iron_sword",
   布衣: "cloth_robe",
-  布履: "cloth_shoes",
+  布履: "cloth_boots",
   starter_weapon: "rough_iron_sword",
   starter_robe: "cloth_robe",
-  starter_shoes: "cloth_shoes",
+  starter_shoes: "cloth_boots",
   无: null,
   "": null,
 };
@@ -39,14 +45,16 @@ export function createEquipmentInstance(itemId: string, options: { id?: string; 
     return null;
   }
 
-  return {
-    id: options.id ?? createEquipmentInstanceId(normalizedItemId),
+  return generateEquipment({
     itemId: normalizedItemId,
-    bonuses: { ...item.equipment.bonuses },
-    powerBonus: item.equipment.powerBonus,
-    affixes: [...(item.affixes ?? [])],
-    createdAt: options.createdAt ?? new Date().toISOString(),
-  };
+    realmTier: item.tier,
+    realmPhase: item.equipment.requiredPhase ?? "middle",
+    quality: item.grade,
+    slot: item.equipment.slot,
+    baseName: item.name,
+    id: options.id,
+    createdAt: options.createdAt,
+  });
 }
 
 export function normalizeInventoryState(inventory?: Partial<InventoryState>): InventoryState {
@@ -94,7 +102,7 @@ export function normalizeInventoryState(inventory?: Partial<InventoryState>): In
   });
 
   const equipment = equipmentSlots.reduce<InventoryState["equipment"]>((slots, slot) => {
-    const rawValue = inventory?.equipment?.[slot.id];
+    const rawValue = getRawEquipmentSlotValue(inventory?.equipment, slot.id);
     const instanceId = resolveEquipmentSlotInstanceId(rawValue, slot.id, equipmentItems, usedInstanceIds, addEquipmentInstance);
     slots[slot.id] = instanceId;
     return slots;
@@ -143,33 +151,60 @@ export function getEquipmentBonuses(game: GameState): { stats: EquipmentBonus; p
       if (!instance) {
         return total;
       }
+      const seal = getEquipmentSealState(game, instance);
       Object.entries(instance.bonuses).forEach(([statKey, value]) => {
         const key = statKey as keyof Stats;
-        if (key === "dodge") {
-          return;
-        }
-        total.stats[key] = (total.stats[key] ?? 0) + (value ?? 0);
+        total.stats[key] = (total.stats[key] ?? 0) + (value ?? 0) * seal.mainStatMultiplier;
       });
-      total.power += instance.powerBonus;
+      total.power += Math.round(instance.powerBonus * seal.mainStatMultiplier);
       return total;
     },
     { stats: {} as EquipmentBonus, power: 0 },
   );
 }
 
+export function getActiveEquipmentAffixes(game: GameState): ItemAffix[] {
+  return equipmentSlots.flatMap((slot) => {
+    const instance = getEquippedEquipmentInstance(game, slot.id);
+    if (!instance) {
+      return [];
+    }
+    const seal = getEquipmentSealState(game, instance);
+    if (seal.affixesSealed) {
+      return instance.affixes.filter((affix) => !affix.special && !affix.exclusive && !affix.unique);
+    }
+    return instance.affixes;
+  });
+}
+
 export function getEffectiveStats(game: GameState): Stats {
   const bonuses = getEquipmentBonuses(game).stats;
-  return {
+  const affixes = getActiveEquipmentAffixes(game);
+  const percentBonus = (stat: NonNullable<ItemAffix["stat"]>) =>
+    affixes.reduce((sum, affix) => sum + (affix.stat === stat && typeof affix.value === "number" ? affix.value : 0), 0);
+  const withPercent = (value: number, stat: NonNullable<ItemAffix["stat"]>) => Math.max(0, value * (1 + percentBonus(stat)));
+  const flatStats = {
     maxHp: game.player.stats.maxHp + (bonuses.maxHp ?? 0),
     maxSpirit: game.player.stats.maxSpirit + (bonuses.maxSpirit ?? 0),
     attack: game.player.stats.attack + (bonuses.attack ?? 0),
     defense: game.player.stats.defense + (bonuses.defense ?? 0),
-    divineSense: game.player.stats.divineSense + (bonuses.divineSense ?? 0),
+    spiritSense: game.player.stats.spiritSense + (bonuses.spiritSense ?? 0),
     speed: game.player.stats.speed + (bonuses.speed ?? 0),
-    dodge: 0,
-    crit: game.player.stats.crit + (bonuses.crit ?? 0),
+    dodgeRate: game.player.stats.dodgeRate + (bonuses.dodgeRate ?? 0),
+    critRate: game.player.stats.critRate + (bonuses.critRate ?? 0),
     critDamage: game.player.stats.critDamage + (bonuses.critDamage ?? 0),
   };
+  return capFinalStats({
+    maxHp: Math.round(withPercent(flatStats.maxHp, "maxHpPct")),
+    maxSpirit: Math.round(withPercent(flatStats.maxSpirit, "maxSpiritPct")),
+    attack: Math.round(withPercent(flatStats.attack, "attackPct")),
+    defense: Math.round(withPercent(flatStats.defense, "defensePct")),
+    spiritSense: Math.round(withPercent(flatStats.spiritSense, "spiritSensePct")),
+    speed: Math.round(withPercent(flatStats.speed, "speedPct")),
+    dodgeRate: flatStats.dodgeRate,
+    critRate: flatStats.critRate,
+    critDamage: flatStats.critDamage,
+  });
 }
 
 export function getEffectivePower(game: GameState): number {
@@ -311,10 +346,24 @@ export function canEquipItem(game: GameState, item: ItemConfig): boolean {
   if (!requirement) {
     return false;
   }
-  if (!requirement.requiredMajorRealm) {
-    return true;
-  }
-  return isRealmStageAtLeast(game.player.realmId, requirement.requiredMajorRealm, requirement.requiredPhase ?? "early");
+  const itemRealm = requirement.requiredMajorRealm ?? item.tier;
+  const playerRealm = getRealm(game.player.realmId).majorRealmId;
+  return getMajorRealmRank(itemRealm) <= getMajorRealmRank(playerRealm) + 1;
+}
+
+export function getEquipmentSealState(game: GameState, instanceOrItem: EquipmentInstance | ItemConfig): EquipmentSealState {
+  const itemRealm = "realmTier" in instanceOrItem ? instanceOrItem.realmTier : instanceOrItem.equipment?.requiredMajorRealm ?? instanceOrItem.tier;
+  const quality = "quality" in instanceOrItem ? instanceOrItem.quality : instanceOrItem.grade;
+  const playerRealm = getRealm(game.player.realmId).majorRealmId;
+  const itemRank = getMajorRealmRank(itemRealm);
+  const playerRank = getMajorRealmRank(playerRealm);
+  const sealed = itemRank > playerRank;
+  return {
+    sealed,
+    mainStatMultiplier: sealed ? 0.6 : 1,
+    affixesSealed: sealed && itemGradeMetas[quality].tier >= itemGradeMetas.xuan.tier,
+    reason: sealed ? "境界不足，装备处于封印中" : undefined,
+  };
 }
 
 export function getEquippableInventoryItems(game: GameState): EquipmentInstance[] {
@@ -379,12 +428,24 @@ function normalizeEquipmentInstance(rawInstance: unknown, usedInstanceIds: Set<s
     return null;
   }
   const id = typeof source.id === "string" && source.id ? makeUniqueInstanceId(source.id, usedInstanceIds) : createEquipmentInstanceId(itemId);
+  const fallback = createEquipmentInstance(itemId, { id, createdAt: typeof source.createdAt === "string" ? source.createdAt : undefined });
+  if (!fallback) {
+    return null;
+  }
   return {
+    ...fallback,
     id,
     itemId,
-    bonuses: normalizeEquipmentBonuses(source.bonuses, item.equipment.bonuses),
-    powerBonus: typeof source.powerBonus === "number" && Number.isFinite(source.powerBonus) ? source.powerBonus : item.equipment.powerBonus,
-    affixes: normalizeAffixes(source.affixes, item.affixes),
+    name: typeof source.name === "string" ? source.name : fallback.name,
+    displayName: typeof source.displayName === "string" ? source.displayName : fallback.displayName,
+    realmTier: normalizeMajorRealmId((source as Partial<EquipmentInstance>).realmTier, item.tier),
+    realmPhase: (source as Partial<EquipmentInstance>).realmPhase ?? fallback.realmPhase,
+    quality: item.grade,
+    slot: normalizeEquipmentSlotId((source as Partial<EquipmentInstance>).slot, item.equipment.slot),
+    mainStats: normalizeEquipmentBonuses((source as Partial<EquipmentInstance>).mainStats, fallback.mainStats),
+    bonuses: normalizeEquipmentBonuses(source.bonuses, fallback.bonuses),
+    powerBonus: typeof source.powerBonus === "number" && Number.isFinite(source.powerBonus) ? source.powerBonus : fallback.powerBonus,
+    affixes: normalizeAffixes(source.affixes, fallback.affixes),
     createdAt: typeof source.createdAt === "string" && source.createdAt ? source.createdAt : new Date().toISOString(),
   };
 }
@@ -392,21 +453,37 @@ function normalizeEquipmentInstance(rawInstance: unknown, usedInstanceIds: Set<s
 function normalizeEquipmentBonuses(rawBonuses: EquipmentBonus | undefined, fallback: EquipmentBonus): EquipmentBonus {
   const normalized: EquipmentBonus = {};
   Object.entries(rawBonuses ?? fallback).forEach(([key, rawValue]) => {
-    if (key === "dodge") {
-      return;
-    }
-    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
-      normalized[key as keyof Stats] = rawValue;
+    const normalizedKey = normalizeStatKey(key);
+    if (normalizedKey && typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      normalized[normalizedKey] = rawValue;
     }
   });
-  return Object.keys(normalized).length ? normalized : (Object.fromEntries(Object.entries(fallback).filter(([key]) => key !== "dodge")) as EquipmentBonus);
+  return Object.keys(normalized).length ? normalized : fallback;
 }
 
 function normalizeAffixes(rawAffixes: ItemAffix[] | undefined, fallbackAffixes: ItemAffix[] | undefined): ItemAffix[] {
   const source = Array.isArray(rawAffixes) ? rawAffixes : fallbackAffixes ?? [];
   return source
     .filter((affix) => affix && typeof affix.id === "string" && typeof affix.name === "string" && typeof affix.description === "string")
-    .map((affix) => ({ id: affix.id, name: affix.name, description: affix.description }));
+    .map((affix) => ({ ...affix }));
+}
+
+function getRawEquipmentSlotValue(equipment: Partial<InventoryState["equipment"]> | undefined, slotId: EquipmentSlotId): unknown {
+  const legacySlotMap: Record<EquipmentSlotId, string | null> = {
+    weapon: null,
+    robe: null,
+    helmet: "crown",
+    wrist: null,
+    boots: "shoes",
+    ring: "accessory",
+    amulet: null,
+    artifact: "treasure",
+  };
+  if (slotId === "artifact") {
+    const rawEquipment = equipment as Record<string, unknown> | undefined;
+    return equipment?.artifact ?? rawEquipment?.treasure ?? rawEquipment?.spirit_artifact;
+  }
+  return equipment?.[slotId] ?? (legacySlotMap[slotId] ? (equipment as Record<string, unknown> | undefined)?.[legacySlotMap[slotId]!] : undefined);
 }
 
 function createEquipmentInstanceId(itemId: string): string {
@@ -415,6 +492,48 @@ function createEquipmentInstanceId(itemId: string): string {
       ? globalThis.crypto.randomUUID()
       : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   return `eq_${itemId}_${randomId}`;
+}
+
+export function normalizeEquipmentSlotId(slotId: unknown, fallback: EquipmentSlotId = "weapon"): EquipmentSlotId {
+  const legacySlotMap: Record<string, EquipmentSlotId> = {
+    crown: "helmet",
+    shoes: "boots",
+    accessory: "ring",
+    treasure: "artifact",
+    spirit_artifact: "artifact",
+  };
+  if (typeof slotId !== "string") {
+    return fallback;
+  }
+  const normalized = legacySlotMap[slotId] ?? slotId;
+  return equipmentSlots.some((slot) => slot.id === normalized) ? (normalized as EquipmentSlotId) : fallback;
+}
+
+export function normalizeMajorRealmId(value: unknown, fallback: MajorRealmId = "mortal"): MajorRealmId {
+  const legacyRealmMap: Record<string, MajorRealmId> = {
+    qi_refining: "qi",
+    core_formation: "core",
+    nascent_soul: "nascent",
+    spirit_transformation: "deity",
+    void_refining: "void",
+    body_integration: "integration",
+    post_ascension: "tribulation",
+  };
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const normalized = legacyRealmMap[value] ?? value;
+  return majorRealmOrder.includes(normalized as MajorRealmId) ? (normalized as MajorRealmId) : fallback;
+}
+
+function normalizeStatKey(key: string): keyof Stats | null {
+  const legacyStatMap: Record<string, keyof Stats> = {
+    divineSense: "spiritSense",
+    dodge: "dodgeRate",
+    crit: "critRate",
+  };
+  const normalized = legacyStatMap[key] ?? key;
+  return ["maxHp", "maxSpirit", "attack", "defense", "spiritSense", "speed", "dodgeRate", "critRate", "critDamage"].includes(normalized) ? (normalized as keyof Stats) : null;
 }
 
 function makeUniqueInstanceId(preferredId: string, usedIds: Set<string>): string {

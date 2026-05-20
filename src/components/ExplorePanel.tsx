@@ -11,7 +11,7 @@ import {
 import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZones, gridDestinationZones } from "../data/gridMapZones";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
-import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type SceneAction } from "../data/world";
+import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type SceneAction, type SceneHotspot, type SceneNode } from "../data/world";
 import { getWorldProvince, worldProvinces, type WorldProvince } from "../data/worldMap";
 import { beginCombat, grantGatherReward, grantTreasure } from "../game/combatEngine";
 import {
@@ -32,6 +32,10 @@ import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
 const worldMapSrc = new URL("../../World_map.png", import.meta.url).href;
 const regionMapImages: Record<RegionMapConfig["imageKey"], string> = {
   nanjiang: new URL("../../World_map_nanjiang2.png", import.meta.url).href,
+  zhongzhou: new URL("../../World_map_zhonzhou2.png", import.meta.url).href,
+};
+const sceneImages: Record<string, string> = {
+  tian_xuan_gate: new URL("../../maps/tian_xuan_cheng_meng.png", import.meta.url).href,
 };
 const GRID_MOVEMENT_STEP_MS = 180;
 
@@ -56,15 +60,22 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
   const [view, setView] = useState<ExploreView>("world");
   const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
   const [selectedRegionMarkerId, setSelectedRegionMarkerId] = useState<string | null>(null);
+  const [activeSceneHotspotId, setActiveSceneHotspotId] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugResult, setDebugResult] = useState<string | null>(null);
   const [travel, setTravel] = useState<ActiveTravel | null>(null);
   const region = getRegion(game.world.regionId);
   const location = getLocation(game.world.regionId, game.world.locationId);
   const scene = getScene(game.world.regionId, game.world.locationId, game.world.sceneId);
+  const sceneImage = scene.imageKey ? sceneImages[scene.imageKey] : null;
+  const activeSceneHotspot = scene.hotspots?.find((hotspot) => hotspot.id === activeSceneHotspotId) ?? null;
   const selectedProvince = selectedProvinceId ? getWorldProvince(selectedProvinceId) : null;
   const currentProvince = getWorldProvince(game.world.regionId);
   const regionMap = getRegionMapConfig(game.world.regionId);
+
+  useEffect(() => {
+    setActiveSceneHotspotId(null);
+  }, [game.world.sceneId]);
 
   useEffect(() => {
     if (!travel) {
@@ -185,6 +196,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
   }
 
   function setScene(sceneId: string) {
+    setActiveSceneHotspotId(null);
     onChange({
       ...game,
       world: {
@@ -193,6 +205,11 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
         sceneMessage: `来到 ${getScene(game.world.regionId, game.world.locationId, sceneId).name}。`,
       },
     });
+  }
+
+  function openSceneHotspot(hotspot: SceneHotspot) {
+    setActiveSceneHotspotId(hotspot.id);
+    onChange((currentGame) => appendLog(currentGame, `${hotspot.label}：${hotspot.text}`));
   }
 
   function completeTravel(doneTravel: ActiveTravel) {
@@ -331,6 +348,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
                 debugOpen={debugOpen}
                 debugResult={debugResult}
                 config={regionMap}
+                regionName={region.name}
                 currentLocationId={location.id}
                 selectedMarkerId={selectedRegionMarkerId}
                 locations={region.locations}
@@ -386,6 +404,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
               ))}
             </div>
             <div className="scene-detail">
+              {sceneImage ? <SceneVisual scene={scene} src={sceneImage} onSelectHotspot={openSceneHotspot} /> : null}
               <h3>{scene.name}</h3>
               <small>{scene.type}</small>
               <p>{scene.description}</p>
@@ -402,10 +421,53 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
 
           {scene.actions.some((action) => action.kind === "shop") ? <Shop game={game} onChange={onChange} /> : null}
           {scene.actions.some((action) => action.kind === "taskBoard") ? <TaskBoard game={game} onChange={onChange} /> : null}
+          {activeSceneHotspot ? <SceneDialogueDialog hotspot={activeSceneHotspot} onClose={() => setActiveSceneHotspotId(null)} /> : null}
           <p className="scene-message">{game.world.sceneMessage}</p>
         </>
       )}
     </section>
+  );
+}
+
+function SceneVisual({ scene, src, onSelectHotspot }: { scene: SceneNode; src: string; onSelectHotspot: (hotspot: SceneHotspot) => void }) {
+  return (
+    <div className="scene-visual-frame">
+      <img className="scene-visual" src={src} alt={scene.name} draggable={false} />
+      {scene.hotspots?.map((hotspot) => (
+        <button
+          aria-label={`与${hotspot.label}对话`}
+          className="scene-hotspot-button"
+          key={hotspot.id}
+          style={{ "--hotspot-x": `${hotspot.x}%`, "--hotspot-y": `${hotspot.y}%` } as CSSProperties}
+          type="button"
+          onClick={() => onSelectHotspot(hotspot)}
+        >
+          <span>{hotspot.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SceneDialogueDialog({ hotspot, onClose }: { hotspot: SceneHotspot; onClose: () => void }) {
+  return (
+    <div className="scene-dialogue-backdrop" role="dialog" aria-modal="true" aria-label={`${hotspot.label}对话`} onClick={onClose}>
+      <section className="scene-dialogue-card" onClick={(event) => event.stopPropagation()}>
+        <div className="section-heading">
+          <h2>
+            <GameIcon name="module-explore" size={18} />
+            {hotspot.label}
+          </h2>
+          <span>{hotspot.title}</span>
+        </div>
+        <p>{hotspot.text}</p>
+        <div className="world-drawer-actions">
+          <button className="ghost-button" type="button" onClick={onClose}>
+            返回
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -604,6 +666,7 @@ function RegionImageMapView({
   debugOpen,
   debugResult,
   config,
+  regionName,
   currentLocationId,
   selectedMarkerId,
   locations,
@@ -620,6 +683,7 @@ function RegionImageMapView({
   debugOpen: boolean;
   debugResult: string | null;
   config: RegionMapConfig;
+  regionName: string;
   currentLocationId: string;
   selectedMarkerId: string | null;
   locations: LocationNode[];
@@ -734,7 +798,7 @@ function RegionImageMapView({
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={regionMapImages[config.imageKey]} alt="南疆区域地图" draggable={false} />
+          <img src={regionMapImages[config.imageKey]} alt={`${regionName}区域地图`} draggable={false} />
           {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} /> : null}
           <GridPlayerMarker mapData={mapData} coord={currentCoord} markerScale={1 / scale} />
           {config.markers.map((marker) => {
@@ -1104,7 +1168,7 @@ function getActionIconName(kind: SceneAction["kind"]): GameIconName {
     return "item-material";
   }
   if (kind === "treasure") {
-    return "equipment-treasure";
+    return "equipment-artifact";
   }
   if (kind === "joinSect") {
     return "module-sect";

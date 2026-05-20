@@ -2,30 +2,30 @@ import type { MajorRealmId, RealmConfig, RealmPhaseId } from "../types";
 
 export const majorRealmOrder: MajorRealmId[] = [
   "mortal",
-  "qi_refining",
+  "qi",
   "foundation",
-  "core_formation",
-  "nascent_soul",
-  "spirit_transformation",
-  "void_refining",
-  "body_integration",
+  "core",
+  "nascent",
+  "deity",
+  "void",
+  "integration",
   "mahayana",
-  "post_ascension",
+  "tribulation",
 ];
 
 export const realmPhaseOrder: RealmPhaseId[] = ["early", "middle", "late", "peak"];
 
 export const majorRealmLabels: Record<MajorRealmId, string> = {
   mortal: "凡人",
-  qi_refining: "炼气",
+  qi: "炼气",
   foundation: "筑基",
-  core_formation: "结丹",
-  nascent_soul: "元婴",
-  spirit_transformation: "化神",
-  void_refining: "炼虚",
-  body_integration: "合体",
+  core: "结丹",
+  nascent: "元婴",
+  deity: "化神",
+  void: "炼虚",
+  integration: "合体",
   mahayana: "大乘",
-  post_ascension: "飞升后",
+  tribulation: "渡劫",
 };
 
 export const realmPhaseLabels: Record<RealmPhaseId, string> = {
@@ -39,10 +39,10 @@ export const realms: RealmConfig[] = [
   {
     id: "qi_early",
     name: "炼气初期",
-    majorRealmId: "qi_refining",
+    majorRealmId: "qi",
     phaseId: "early",
     requiredCultivation: 120,
-    baseStats: { maxHp: 220, maxSpirit: 48, attack: 34, defense: 18, divineSense: 15, speed: 18, dodge: 0, crit: 0.05, critDamage: 1.5 },
+    baseStats: { maxHp: 220, maxSpirit: 48, attack: 34, defense: 18, spiritSense: 0, speed: 18, dodgeRate: 0.02, critRate: 0.05, critDamage: 1.5 },
     lifespan: 120,
     breakthroughCost: {},
     successRate: 1,
@@ -51,10 +51,10 @@ export const realms: RealmConfig[] = [
   {
     id: "qi_middle",
     name: "炼气中期",
-    majorRealmId: "qi_refining",
+    majorRealmId: "qi",
     phaseId: "middle",
     requiredCultivation: 320,
-    baseStats: { maxHp: 310, maxSpirit: 72, attack: 47, defense: 25, divineSense: 19, speed: 21, dodge: 0, crit: 0.055, critDamage: 1.5 },
+    baseStats: { maxHp: 310, maxSpirit: 72, attack: 47, defense: 25, spiritSense: 0, speed: 21, dodgeRate: 0.022, critRate: 0.055, critDamage: 1.5 },
     lifespan: 130,
     breakthroughCost: { spiritStones: 80 },
     successRate: 0.92,
@@ -63,10 +63,10 @@ export const realms: RealmConfig[] = [
   {
     id: "qi_late",
     name: "炼气后期",
-    majorRealmId: "qi_refining",
+    majorRealmId: "qi",
     phaseId: "late",
     requiredCultivation: 850,
-    baseStats: { maxHp: 420, maxSpirit: 105, attack: 62, defense: 33, divineSense: 23, speed: 24, dodge: 0, crit: 0.06, critDamage: 1.5 },
+    baseStats: { maxHp: 420, maxSpirit: 105, attack: 62, defense: 33, spiritSense: 0, speed: 24, dodgeRate: 0.024, critRate: 0.06, critDamage: 1.5 },
     lifespan: 140,
     breakthroughCost: {
       spiritStones: 180,
@@ -78,10 +78,10 @@ export const realms: RealmConfig[] = [
   {
     id: "qi_peak",
     name: "炼气圆满",
-    majorRealmId: "qi_refining",
+    majorRealmId: "qi",
     phaseId: "peak",
     requiredCultivation: 1800,
-    baseStats: { maxHp: 560, maxSpirit: 150, attack: 80, defense: 42, divineSense: 27, speed: 28, dodge: 0, crit: 0.065, critDamage: 1.5 },
+    baseStats: { maxHp: 560, maxSpirit: 150, attack: 80, defense: 42, spiritSense: 0, speed: 28, dodgeRate: 0.026, critRate: 0.065, critDamage: 1.5 },
     lifespan: 150,
     breakthroughCost: {
       spiritStones: 360,
@@ -96,7 +96,7 @@ export const realms: RealmConfig[] = [
     majorRealmId: "foundation",
     phaseId: "early",
     requiredCultivation: 4200,
-    baseStats: { maxHp: 820, maxSpirit: 250, attack: 116, defense: 60, divineSense: 31, speed: 33, dodge: 0, crit: 0.07, critDamage: 1.5 },
+    baseStats: { maxHp: 820, maxSpirit: 250, attack: 116, defense: 60, spiritSense: 0, speed: 33, dodgeRate: 0.028, critRate: 0.07, critDamage: 1.5 },
     lifespan: 220,
     breakthroughCost: {},
     successRate: 0.38,
@@ -108,7 +108,7 @@ export const realms: RealmConfig[] = [
     majorRealmId: "foundation",
     phaseId: "middle",
     requiredCultivation: 9600,
-    baseStats: { maxHp: 1120, maxSpirit: 360, attack: 154, defense: 79, divineSense: 35, speed: 38, dodge: 0, crit: 0.075, critDamage: 1.5 },
+    baseStats: { maxHp: 1120, maxSpirit: 360, attack: 154, defense: 79, spiritSense: 0, speed: 38, dodgeRate: 0.03, critRate: 0.075, critDamage: 1.5 },
     lifespan: 240,
     breakthroughCost: {
       spiritStones: 900,
@@ -123,7 +123,7 @@ export const realms: RealmConfig[] = [
     majorRealmId: "foundation",
     phaseId: "late",
     requiredCultivation: 22000,
-    baseStats: { maxHp: 1480, maxSpirit: 500, attack: 198, defense: 99, divineSense: 39, speed: 43, dodge: 0, crit: 0.08, critDamage: 1.5 },
+    baseStats: { maxHp: 1480, maxSpirit: 500, attack: 198, defense: 99, spiritSense: 0, speed: 43, dodgeRate: 0.032, critRate: 0.08, critDamage: 1.5 },
     lifespan: 270,
     breakthroughCost: {
       spiritStones: 1800,
@@ -138,7 +138,7 @@ export const realms: RealmConfig[] = [
     majorRealmId: "foundation",
     phaseId: "peak",
     requiredCultivation: 50000,
-    baseStats: { maxHp: 1900, maxSpirit: 680, attack: 248, defense: 124, divineSense: 43, speed: 49, dodge: 0, crit: 0.085, critDamage: 1.5 },
+    baseStats: { maxHp: 1900, maxSpirit: 680, attack: 248, defense: 124, spiritSense: 0, speed: 49, dodgeRate: 0.034, critRate: 0.085, critDamage: 1.5 },
     lifespan: 300,
     breakthroughCost: {
       spiritStones: 3600,
