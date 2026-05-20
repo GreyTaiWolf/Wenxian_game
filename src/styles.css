@@ -28,8 +28,10 @@
   --grade-superior: #4e8dff;
   --grade-rare: #a56dff;
   --grade-spirit: #ff9a3d;
-  --grade-earth: #ff5e6a;
-  --grade-heaven: #ffd45a;
+  --grade-earth: #ffd86b;
+  --grade-heaven: #ff6b6b;
+  --grade-immortal: #eaf7ff;
+  --grade-divine: #ffc857;
   --jade: var(--primary);
   --jade-strong: var(--primary-strong);
   --red: var(--danger);
@@ -1278,12 +1280,22 @@ small {
 
 .grade-earth {
   --grade-color: var(--grade-earth);
-  --grade-glow: rgba(255, 94, 106, 0.46);
+  --grade-glow: rgba(255, 216, 107, 0.38);
 }
 
 .grade-heaven {
   --grade-color: var(--grade-heaven);
-  --grade-glow: rgba(255, 212, 90, 0.5);
+  --grade-glow: rgba(255, 107, 107, 0.45);
+}
+
+.grade-immortal {
+  --grade-color: var(--grade-immortal);
+  --grade-glow: rgba(218, 238, 255, 0.48);
+}
+
+.grade-divine {
+  --grade-color: var(--grade-divine);
+  --grade-glow: rgba(255, 160, 64, 0.56);
 }
 
 .grade-card {
@@ -1341,6 +1353,35 @@ small {
 .motion-on .grade-card.grade-heaven,
 .motion-on .grade-badge.grade-heaven {
   animation: grade-heaven-flare 2.2s ease-in-out infinite;
+}
+
+.motion-on .grade-card.grade-immortal,
+.motion-on .grade-badge.grade-immortal {
+  animation: grade-immortal-aura 3.6s ease-in-out infinite;
+}
+
+.motion-on .grade-card.grade-divine,
+.motion-on .grade-badge.grade-divine {
+  animation: grade-divine-core 3.8s ease-in-out infinite;
+}
+
+.motion-on .grade-card.grade-divine::before,
+.motion-on .grade-badge.grade-divine::before {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 200, 87, 0.34), transparent 36%),
+    linear-gradient(120deg, rgba(255, 106, 61, 0.16), rgba(255, 61, 138, 0.14), rgba(122, 92, 255, 0.14));
+}
+
+.motion-on .grade-card.grade-divine::after,
+.motion-on .grade-badge.grade-divine::after {
+  position: absolute;
+  inset: -28%;
+  z-index: 0;
+  pointer-events: none;
+  content: "";
+  background: conic-gradient(from 0deg, rgba(255, 106, 61, 0.2), rgba(255, 200, 87, 0.2), rgba(255, 61, 138, 0.2), rgba(122, 92, 255, 0.2), rgba(255, 106, 61, 0.2));
+  filter: blur(14px);
+  animation: grade-divine-rainbow 7.2s linear infinite;
 }
 
 .grade-chip {
@@ -2878,6 +2919,51 @@ small {
   }
   50% {
     filter: saturate(1.55) brightness(1.16);
+  }
+}
+
+@keyframes grade-immortal-aura {
+  0%,
+  100% {
+    filter: saturate(1.08) brightness(1);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--grade-color) 22%, transparent), 0 0 24px var(--grade-glow);
+  }
+  50% {
+    filter: saturate(1.28) brightness(1.12);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--grade-color) 34%, transparent), 0 0 34px var(--grade-glow);
+  }
+}
+
+@keyframes grade-divine-core {
+  0%,
+  100% {
+    filter: saturate(1.08) brightness(1);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--grade-color) 34%, transparent),
+      0 0 20px var(--grade-glow),
+      0 0 38px rgba(255, 200, 87, 0.2);
+  }
+  50% {
+    filter: saturate(1.42) brightness(1.14);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--grade-color) 48%, transparent),
+      0 0 28px var(--grade-glow),
+      0 0 46px rgba(255, 106, 61, 0.26);
+  }
+}
+
+@keyframes grade-divine-rainbow {
+  from {
+    transform: rotate(0deg) scale(1);
+    opacity: 0.58;
+  }
+  50% {
+    transform: rotate(180deg) scale(1.03);
+    opacity: 0.8;
+  }
+  to {
+    transform: rotate(360deg) scale(1);
+    opacity: 0.58;
   }
 }
 
