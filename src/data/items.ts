@@ -1,6 +1,6 @@
 import type { EquipmentBonus, EquipmentSlotId, ItemAffix, ItemConfig, ItemGrade, ItemTierId, MajorRealmId, RealmPhaseId } from "../types";
 
-export const itemGradeOrder: ItemGrade[] = ["common", "fine", "superior", "rare", "spirit", "earth", "heaven"];
+export const itemGradeOrder: ItemGrade[] = ["common", "fine", "superior", "rare", "spirit", "earth", "heaven", "immortal", "divine"];
 
 export const itemGradeLabels: Record<ItemGrade, string> = {
   common: "凡品",
@@ -10,6 +10,8 @@ export const itemGradeLabels: Record<ItemGrade, string> = {
   spirit: "灵品",
   earth: "地品",
   heaven: "天品",
+  immortal: "仙品",
+  divine: "神品",
 };
 
 export const itemTierLabels: Record<ItemTierId, string> = {
@@ -52,8 +54,10 @@ export const itemGradeMetas: Record<
   },
   rare: { label: "珍品", hex: "#A56DFF", priceMultiplier: 5.5, effectMultiplier: 1.38, affixCount: "3-4", specialEffect: "小型特效词条", tier: 4, tone: "紫色符纹" },
   spirit: { label: "灵品", hex: "#FF9A3D", priceMultiplier: 9, effectMultiplier: 1.58, affixCount: "4-5", specialEffect: "稀有独特词条", tier: 5, tone: "橙色灵焰" },
-  earth: { label: "地品", hex: "#FF5E6A", priceMultiplier: 15, effectMultiplier: 1.82, affixCount: "5-6", specialEffect: "强独特词条", tier: 6, tone: "红色地脉辉光" },
-  heaven: { label: "天品", hex: "#FFD45A", priceMultiplier: 24, effectMultiplier: 2.1, affixCount: "6 + 1", specialEffect: "专属/唯一特性", tier: 7, tone: "金色天命神光" },
+  earth: { label: "地品", hex: "#FFD86B", priceMultiplier: 15, effectMultiplier: 1.82, affixCount: "5-6", specialEffect: "至少 1 条强独特词条", tier: 6, tone: "厚重金辉" },
+  heaven: { label: "天品", hex: "#FF6B6B", priceMultiplier: 24, effectMultiplier: 2.1, affixCount: "6 + 1", specialEffect: "至少 1 条强词条", tier: 7, tone: "赤焰灵压" },
+  immortal: { label: "仙品", hex: "#EAF7FF", priceMultiplier: 38, effectMultiplier: 2.38, affixCount: "6-7", specialEffect: "至少 1 条专属词条", tier: 8, tone: "白金圣辉" },
+  divine: { label: "神品", hex: "#FFC857", priceMultiplier: 60, effectMultiplier: 2.72, affixCount: "7-8", specialEffect: "至少 1-2 条唯一词条", tier: 9, tone: "赤金虹光" },
 };
 
 export interface ItemGradeAffix {
@@ -70,6 +74,8 @@ export const itemGradeAffixLibrary: Record<ItemGrade, ItemGradeAffix[]> = {
   spirit: [{ id: "spirit_flame", name: "灵焰独照", description: "大阶段核心装备，可能携带稀有独特词条。" }],
   earth: [{ id: "earth_vein", name: "地脉赤辉", description: "后期 Boss 掉落定位，强调强独特词条和构筑价值。" }],
   heaven: [{ id: "heaven_flare", name: "天光神铸", description: "章节巅峰掉落定位，保留专属或唯一特性。" }],
+  immortal: [{ id: "immortal_aura", name: "仙辉垂曜", description: "极稀有掉落定位，至少携带 1 条专属词条并强化构筑上限。" }],
+  divine: [{ id: "divine_legacy", name: "神纹传承", description: "传承级唯一定位，携带 1-2 条唯一词条并提供终局构筑方向。" }],
 };
 
 interface BaseItemConfig {
