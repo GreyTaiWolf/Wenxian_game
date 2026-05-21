@@ -33,6 +33,15 @@ export interface SceneHotspot {
   text: string;
 }
 
+export interface LocationSceneHotspot {
+  id: string;
+  label: string;
+  sceneId: string;
+  x: number;
+  y: number;
+  title?: string;
+}
+
 export interface SceneNode {
   id: string;
   name: string;
@@ -48,6 +57,8 @@ export interface LocationNode {
   name: string;
   type: "city" | "town" | "wild" | "secret";
   description: string;
+  sceneMapImageKey?: string;
+  sceneMapHotspots?: LocationSceneHotspot[];
   scenes: SceneNode[];
 }
 
@@ -188,35 +199,32 @@ export const regions: RegionNode[] = [
     locations: [
       {
         id: "qingyun_city",
-        name: "青云城",
+        name: "青云镇",
         type: "city",
-        description: "中州东部的修士城池，坊市繁盛，青云宗在此设有接引处。",
+        description: "中州东部依青云宗灵脉而兴的修士镇，铺坊、客栈、公告栏与灵田沿主街展开。",
+        sceneMapImageKey: "qingyun_town",
+        sceneMapHotspots: [
+          { id: "qingyun_shop_marker", label: "小小仙铺", sceneId: "xiaoxiao_shop", x: 48.81, y: 36.96, title: "杂货" },
+          { id: "zhao_refinery_marker", label: "赵家炼器铺", sceneId: "zhao_refinery", x: 28, y: 64, title: "炼器" },
+          { id: "chen_banxian_marker", label: "陈半仙", sceneId: "chen_banxian_stall", x: 41.67, y: 54.35, title: "秘籍摊" },
+          { id: "li_baicao_marker", label: "李百草", sceneId: "li_baicao_herbs", x: 29.76, y: 50, title: "草药铺" },
+          { id: "city_manor_marker", label: "城主府", sceneId: "city_manor", x: 60, y: 39, title: "府衙" },
+          { id: "notice_board_marker", label: "公告栏", sceneId: "notice_board", x: 63.1, y: 23.91, title: "任务" },
+          { id: "qingyun_inn_marker", label: "青云客栈", sceneId: "qingyun_inn", x: 72.62, y: 50, title: "客栈" },
+          { id: "inn_spirit_field_marker", label: "灵田", sceneId: "inn_spirit_field", x: 57, y: 84, title: "客栈灵田" },
+        ],
         scenes: [
           {
             id: "city_manor",
             name: "城主府",
             type: "NPC 对话",
-            description: "朱漆府门前悬着青云城令，城中执事在此处理商税、治安与修士纠纷。",
+            description: "朱漆府门前悬着青云镇令，镇中执事在此处理商税、治安与修士纠纷。",
             actions: [
               {
                 id: "manor_talk",
                 label: "拜见城府执事",
                 kind: "dialogue",
-                text: "城府执事翻看名册：城中讲规矩，散修若要长住，最好先在任务榜立下功劳。",
-              },
-            ],
-          },
-          {
-            id: "east_road",
-            name: "城东大道",
-            type: "NPC 对话",
-            description: "青石大道直通城门，守城修士与宗门接引人在此核验来往散修的令牌。",
-            actions: [
-              {
-                id: "guard_talk",
-                label: "与守城修士交谈",
-                kind: "dialogue",
-                text: "守城修士打量你片刻：初入仙途，先去任务榜历练，若有青云令牌，可入宗门记名。",
+                text: "城府执事翻看名册：镇中讲规矩，散修若要长住，最好先在公告栏立下功劳。",
               },
               {
                 id: "join_qingyun",
@@ -226,23 +234,65 @@ export const regions: RegionNode[] = [
             ],
           },
           {
-            id: "west_market",
-            name: "城西坊市",
+            id: "xiaoxiao_shop",
+            name: "小小仙铺",
             type: "交易",
-            description: "城西商贸区摊位沿街而立，丹药、材料和低阶法器都可在此购得。",
-            actions: [{ id: "open_shop", label: "查看摊位", kind: "shop" }],
-          },
-          {
-            id: "south_residence",
-            name: "城南民居",
-            type: "NPC 对话",
-            description: "凡人与低阶散修混居于此，巷口茶棚常能听到黑风山与落霞镇的消息。",
+            description: "门脸不大，货架却塞满符纸、丹药、针线包和低阶修士最常用的杂物。",
             actions: [
               {
-                id: "talk_wanderers",
-                label: "听散修闲谈",
+                id: "open_xiaoxiao_shop",
+                label: "查看仙铺货架",
+                kind: "shop",
+              },
+            ],
+          },
+          {
+            id: "zhao_refinery",
+            name: "赵家炼器铺",
+            type: "交易",
+            description: "铺内炉火不熄，赵家匠师常替散修修补兵刃，也售卖几柄低阶法剑。",
+            actions: [{ id: "open_zhao_refinery", label: "查看炼器货架", kind: "shop" }],
+          },
+          {
+            id: "chen_banxian_stall",
+            name: "陈半仙",
+            type: "NPC 对话",
+            description: "一个白胡子老头坐在旧幡下，摊前摆着手抄秘籍、残卷和几本真假难辨的奇书。",
+            actions: [
+              {
+                id: "talk_chen_banxian",
+                label: "翻看秘籍摊",
                 kind: "dialogue",
-                text: "一名青衣女修低声提醒：黑风山夜里有妖修出没，若无同伴，最好白日入山。",
+                text: "陈半仙眯眼笑道：小友，我这本《三息登仙诀》只卖十块灵石。是真是假？修仙嘛，信则灵，不信也灵。",
+              },
+            ],
+          },
+          {
+            id: "li_baicao_herbs",
+            name: "李百草",
+            type: "交易",
+            imageKey: "li_baicao_herbs",
+            description: "草药铺外晾着新采灵草，李百草熟知山间药性，也常收购凝气草。",
+            actions: [{ id: "open_li_baicao_shop", label: "查看草药柜", kind: "shop" }],
+          },
+          {
+            id: "notice_board",
+            name: "公告栏",
+            type: "任务",
+            description: "木榜上贴着城主府、青云宗和商会发布的差事，纸角被风吹得哗哗作响。",
+            actions: [{ id: "open_tasks", label: "查看公告栏", kind: "taskBoard" }],
+          },
+          {
+            id: "qingyun_inn",
+            name: "青云客栈",
+            type: "NPC 对话",
+            description: "客栈门口酒旗轻晃，老板娘消息灵通，来往散修常在此交换山路传闻。",
+            actions: [
+              {
+                id: "talk_innkeeper",
+                label: "向老板娘打听消息",
+                kind: "dialogue",
+                text: "客栈老板娘擦着柜台：黑风山的风这两日不对，若要去，记得多带回春散。后院那片灵田也要人帮忙看着。",
               },
               {
                 id: "invite_companion",
@@ -252,11 +302,18 @@ export const regions: RegionNode[] = [
             ],
           },
           {
-            id: "north_board",
-            name: "城北任务榜",
-            type: "任务",
-            description: "城北广场木榜上贴着宗门、城主府和商会发布的差事。",
-            actions: [{ id: "open_tasks", label: "查看任务榜", kind: "taskBoard" }],
+            id: "inn_spirit_field",
+            name: "灵田",
+            type: "NPC 对话",
+            description: "青云客栈老板娘在镇内托人照看的小灵田，田埂间能见到几株刚冒尖的灵草。",
+            actions: [
+              {
+                id: "inspect_inn_spirit_field",
+                label: "查看灵田",
+                kind: "dialogue",
+                text: "灵田泥土湿润，阵旗只压住一小片灵气。老板娘说等田势稳了，再让熟客帮忙采药。",
+              },
+            ],
           },
         ],
       },
@@ -462,7 +519,7 @@ export const regions: RegionNode[] = [
             id: "trade_road",
             name: "商道",
             type: "NPC 对话",
-            description: "镇外商道通向青云城，车辙旁偶有妖兽爪痕。",
+            description: "镇外商道通向青云镇，车辙旁偶有妖兽爪痕。",
             actions: [
               {
                 id: "talk_caravan",

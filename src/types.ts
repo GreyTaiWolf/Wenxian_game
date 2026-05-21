@@ -145,8 +145,6 @@ export interface ItemConfig {
   affixes?: ItemAffix[];
   equipment?: {
     slot: EquipmentSlotId;
-    bonuses: EquipmentBonus;
-    powerBonus: number;
     requiredMajorRealm?: MajorRealmId;
     requiredPhase?: RealmPhaseId;
   };
@@ -172,6 +170,7 @@ export interface EquipmentInstance {
   bonuses: EquipmentBonus;
   powerBonus: number;
   affixes: ItemAffix[];
+  equipmentBalanceVersion?: number;
   seal?: EquipmentSealState;
   createdAt: string;
 }
@@ -351,7 +350,7 @@ export interface SettingsState {
 }
 
 export interface RootSave {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   recentSlotId: string | null;
   settings: SettingsState;
   slots: Array<SaveSlot | null>;

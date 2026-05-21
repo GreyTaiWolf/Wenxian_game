@@ -1,9 +1,9 @@
 import { getItem, itemGradeMetas, normalizeInventoryItemId, normalizeItemId } from "../data/items";
-import { getRealm, majorRealmOrder } from "../data/progression";
+import { getRealm, majorRealmOrder, realmPhaseOrder } from "../data/progression";
 import { calculateRealmPower } from "./derived";
-import { capFinalStats } from "./equipmentBalanceLimits";
-import { generateEquipment, getMajorRealmRank } from "./generateEquipment";
-import type { EquipmentBonus, EquipmentInstance, EquipmentSealState, EquipmentSlotId, GameState, InventoryState, ItemAffix, ItemConfig, MajorRealmId, Stats } from "../types";
+import { applyBalanceLimits, capFinalStats } from "./equipmentBalanceLimits";
+import { calculateAffixBonuses, calculateEquipmentPowerBonus, EQUIPMENT_BALANCE_VERSION, generateEquipment, getMajorRealmRank, mergeBonuses } from "./generateEquipment";
+import type { EquipmentBonus, EquipmentInstance, EquipmentSealState, EquipmentSlotId, GameState, InventoryState, ItemAffix, ItemConfig, MajorRealmId, RealmPhaseId, Stats } from "../types";
 
 export const equipmentSlots: Array<{ id: EquipmentSlotId; label: string; emptyLabel: string }> = [
   { id: "weapon", label: "武器", emptyLabel: "未持兵刃" },
@@ -38,7 +38,7 @@ const legacyEquipmentMap: Record<string, string | null> = {
   "": null,
 };
 
-export function createEquipmentInstance(itemId: string, options: { id?: string; createdAt?: string } = {}): EquipmentInstance | null {
+export function createEquipmentInstance(itemId: string, options: { id?: string; createdAt?: string; rng?: () => number } = {}): EquipmentInstance | null {
   const normalizedItemId = normalizeItemId(itemId);
   const item = getItem(normalizedItemId);
   if (!item.equipment) {
@@ -54,6 +54,7 @@ export function createEquipmentInstance(itemId: string, options: { id?: string; 
     baseName: item.name,
     id: options.id,
     createdAt: options.createdAt,
+    rng: options.rng,
   });
 }
 
@@ -428,26 +429,74 @@ function normalizeEquipmentInstance(rawInstance: unknown, usedInstanceIds: Set<s
     return null;
   }
   const id = typeof source.id === "string" && source.id ? makeUniqueInstanceId(source.id, usedInstanceIds) : createEquipmentInstanceId(itemId);
-  const fallback = createEquipmentInstance(itemId, { id, createdAt: typeof source.createdAt === "string" ? source.createdAt : undefined });
-  if (!fallback) {
-    return null;
+  const createdAt = typeof source.createdAt === "string" && source.createdAt ? source.createdAt : new Date().toISOString();
+  const realmTier = normalizeMajorRealmId(source.realmTier, item.tier);
+  const realmPhase = normalizeRealmPhaseId(source.realmPhase, item.equipment.requiredPhase ?? "middle");
+  const slot = normalizeEquipmentSlotId(source.slot, item.equipment.slot);
+  const fallback = generateEquipment({
+    itemId,
+    realmTier,
+    realmPhase,
+    quality: item.grade,
+    slot,
+    baseName: item.name,
+    id,
+    createdAt,
+    rng: createSeededRng(`${EQUIPMENT_BALANCE_VERSION}:${id}:${itemId}:${createdAt}`),
+  });
+  const affixes = normalizeAffixes(source.affixes, fallback.affixes);
+  const needsRebalance = source.equipmentBalanceVersion !== EQUIPMENT_BALANCE_VERSION;
+
+  if (needsRebalance) {
+    return rebuildEquipmentInstance({
+      ...fallback,
+      name: typeof source.name === "string" ? source.name : fallback.name,
+      displayName: typeof source.displayName === "string" ? source.displayName : fallback.displayName,
+      affixes,
+    });
   }
-  return {
+
+  const normalized: EquipmentInstance = {
     ...fallback,
     id,
     itemId,
     name: typeof source.name === "string" ? source.name : fallback.name,
     displayName: typeof source.displayName === "string" ? source.displayName : fallback.displayName,
-    realmTier: normalizeMajorRealmId((source as Partial<EquipmentInstance>).realmTier, item.tier),
-    realmPhase: (source as Partial<EquipmentInstance>).realmPhase ?? fallback.realmPhase,
+    realmTier,
+    realmPhase,
     quality: item.grade,
-    slot: normalizeEquipmentSlotId((source as Partial<EquipmentInstance>).slot, item.equipment.slot),
-    mainStats: normalizeEquipmentBonuses((source as Partial<EquipmentInstance>).mainStats, fallback.mainStats),
+    slot,
+    mainStats: normalizeEquipmentBonuses(source.mainStats, fallback.mainStats),
     bonuses: normalizeEquipmentBonuses(source.bonuses, fallback.bonuses),
     powerBonus: typeof source.powerBonus === "number" && Number.isFinite(source.powerBonus) ? source.powerBonus : fallback.powerBonus,
-    affixes: normalizeAffixes(source.affixes, fallback.affixes),
-    createdAt: typeof source.createdAt === "string" && source.createdAt ? source.createdAt : new Date().toISOString(),
+    affixes,
+    equipmentBalanceVersion: EQUIPMENT_BALANCE_VERSION,
+    createdAt,
   };
+  return applyBalanceLimitsAndPower(normalized);
+}
+
+function rebuildEquipmentInstance(instance: EquipmentInstance): EquipmentInstance {
+  const bonuses = mergeBonuses(instance.mainStats, calculateAffixBonuses(instance.affixes));
+  return applyBalanceLimitsAndPower({
+    ...instance,
+    bonuses,
+    powerBonus: calculateEquipmentPowerBonus(bonuses),
+    equipmentBalanceVersion: EQUIPMENT_BALANCE_VERSION,
+  });
+}
+
+function applyBalanceLimitsAndPower(instance: EquipmentInstance): EquipmentInstance {
+  const limited = applyBalanceLimits(instance);
+  return {
+    ...limited,
+    powerBonus: calculateEquipmentPowerBonus(limited.bonuses),
+    equipmentBalanceVersion: EQUIPMENT_BALANCE_VERSION,
+  };
+}
+
+function normalizeRealmPhaseId(value: unknown, fallback: RealmPhaseId = "middle"): RealmPhaseId {
+  return realmPhaseOrder.includes(value as RealmPhaseId) ? (value as RealmPhaseId) : fallback;
 }
 
 function normalizeEquipmentBonuses(rawBonuses: EquipmentBonus | undefined, fallback: EquipmentBonus): EquipmentBonus {
@@ -492,6 +541,21 @@ function createEquipmentInstanceId(itemId: string): string {
       ? globalThis.crypto.randomUUID()
       : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   return `eq_${itemId}_${randomId}`;
+}
+
+function createSeededRng(seed: string): () => number {
+  let state = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    state ^= seed.charCodeAt(index);
+    state = Math.imul(state, 16777619);
+  }
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 export function normalizeEquipmentSlotId(slotId: unknown, fallback: EquipmentSlotId = "weapon"): EquipmentSlotId {

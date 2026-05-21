@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getSkill } from "../data/skills";
 import { canUseArtifactAction, getSkillSpiritCost, performArtifactAction, performEscape, performPlayerBasic, performPlayerSkill, performUseItem } from "../game/combatEngine";
 import { getEquippedItem } from "../game/equipment";
 import { defaultCombatLoadout } from "../game/state";
-import type { CombatActor, CombatState, GameState, ItemConfig, SkillConfig } from "../types";
+import type { CombatActor, CombatState, ItemConfig, SkillConfig } from "../types";
+import { useActiveGame, useUpdateGame } from "../stores/gameStore";
+import { useCombatUiStore } from "../stores/combatUiStore";
 import { GameIcon, type GameIconName } from "./GameIcon";
 
 type LogNameMeta = {
@@ -12,21 +14,23 @@ type LogNameMeta = {
   className: string;
 };
 
-export default function CombatView({
-  game,
-  onChange,
-}: {
-  game: GameState;
-  onChange: (next: GameState | ((prev: GameState) => GameState)) => void;
-}) {
-  const combat = game.combat;
-  const [selectedSkill, setSelectedSkill] = useState<SkillConfig | null>(null);
-  const [logsOpen, setLogsOpen] = useState(false);
+export default function CombatView() {
+  const activeGame = useActiveGame();
+  const onChange = useUpdateGame();
+  const selectedSkillId = useCombatUiStore((state) => state.selectedSkillId);
+  const logsOpen = useCombatUiStore((state) => state.logsOpen);
+  const syncCombat = useCombatUiStore((state) => state.syncCombat);
+  const selectSkill = useCombatUiStore((state) => state.selectSkill);
+  const clearSelectedSkill = useCombatUiStore((state) => state.clearSelectedSkill);
+  const toggleLogs = useCombatUiStore((state) => state.toggleLogs);
+  const combat = activeGame?.combat;
 
   if (!combat) {
     return null;
   }
 
+  const game = activeGame;
+  const selectedSkill = selectedSkillId ? getSkill(selectedSkillId) : null;
   const currentActorId = combat.turnOrder[combat.turnIndex];
   const currentActor = [...combat.allies, ...combat.enemies].find((actor) => actor.id === currentActorId);
   const player = combat.allies.find((actor) => actor.kind === "player");
@@ -45,6 +49,10 @@ export default function CombatView({
     Boolean(playerTurn && pill?.combatHeal && pillAmount > 0);
 
   useEffect(() => {
+    syncCombat(combat.id);
+  }, [combat.id, syncCombat]);
+
+  useEffect(() => {
     if (!combat || !playerTurn || hasUsableLoadoutAction || selectedSkill) {
       return;
     }
@@ -55,7 +63,7 @@ export default function CombatView({
   }, [combat?.id, combat?.turnIndex, hasUsableLoadoutAction, onChange, playerTurn, selectedSkill]);
 
   function useSkill(skill: SkillConfig, targetId?: string) {
-    setSelectedSkill(null);
+    clearSelectedSkill();
     onChange(performPlayerSkill(game, skill.id, targetId));
   }
 
@@ -73,7 +81,7 @@ export default function CombatView({
           if (skill.targetType.endsWith("All") || skill.targetType === "self") {
             useSkill(skill);
           } else {
-            setSelectedSkill(skill);
+            selectSkill(skill.id);
           }
         }}
       >
@@ -125,7 +133,7 @@ export default function CombatView({
           <span>第 {combat.round} 回合</span>
         </div>
         <div className="combat-header-actions">
-          <button className={`combat-top-button ${logsOpen ? "active" : ""}`} onClick={() => setLogsOpen((open) => !open)}>
+          <button className={`combat-top-button ${logsOpen ? "active" : ""}`} onClick={toggleLogs}>
             <GameIcon name="combat-log" size={15} />
             战斗日志
             <small>{combat.logs.length}</small>
@@ -164,7 +172,7 @@ export default function CombatView({
         <div className="target-panel">
           <div className="section-heading">
             <h2>选择目标：{selectedSkill.name}</h2>
-            <button className="ghost-button" onClick={() => setSelectedSkill(null)}>
+            <button className="ghost-button" onClick={clearSelectedSkill}>
               返回
             </button>
           </div>

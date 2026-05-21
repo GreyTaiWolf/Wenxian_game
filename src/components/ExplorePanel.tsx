@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import {
   WORLD_GRID_MAP_ID,
   getDefaultGridCoord,
@@ -12,8 +12,9 @@ import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZone
 import { REGION_TILE_MOVE_DAYS, WORLD_TILE_MOVE_DAYS } from "../data/time";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
-import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type SceneAction, type SceneHotspot, type SceneNode } from "../data/world";
+import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type LocationSceneHotspot, type SceneAction, type SceneNode } from "../data/world";
 import { getWorldProvince, worldProvinces, type WorldProvince } from "../data/worldMap";
+import { getSceneImage, mapImages, regionMapImages } from "../data/assets";
 import { beginCombat, grantGatherReward, grantTreasure } from "../game/combatEngine";
 import {
   findNearestWalkableCell,
@@ -29,47 +30,47 @@ import {
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
 import { advanceTime } from "../game/time";
 import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
+import { useActiveGame, useSettings, useUpdateGame } from "../stores/gameStore";
+import { defaultMapViewport, useMapUiStore, type ActiveTravel, type LocationTravelIntent, type TravelIntent } from "../stores/mapUiStore";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
+import { NpcDialogueSheet, SceneHotspot, SceneView } from "./scene";
 
-const worldMapSrc = new URL("../../World_map.png", import.meta.url).href;
-const regionMapImages: Record<RegionMapConfig["imageKey"], string> = {
-  nanjiang: new URL("../../World_map_nanjiang2.png", import.meta.url).href,
-  zhongzhou: new URL("../../World_map_zhonzhou2.png", import.meta.url).href,
-};
-const sceneImages: Record<string, string> = {
-  tian_xuan_gate: new URL("../../maps/tian_xuan_cheng_meng.png", import.meta.url).href,
-};
 const GRID_MOVEMENT_STEP_MS = 180;
-
-type ExploreView = "world" | "region" | "location";
+const LOCATION_SCENE_GRID_WIDTH = 42;
+const LOCATION_SCENE_GRID_HEIGHT = 23;
+const LOCATION_SCENE_ASPECT_RATIO = LOCATION_SCENE_GRID_WIDTH / LOCATION_SCENE_GRID_HEIGHT;
+const SCENE_DETAIL_MAP_ASPECT_RATIO = 3 / 2;
 type ExploreChange = (next: GameState | ((prev: GameState) => GameState)) => void;
-type TravelIntent =
-  | { kind: "free" }
-  | { kind: "province"; province: WorldProvince }
-  | { kind: "locationPreview"; regionId: string; locationId: string }
-  | { kind: "location"; regionId: string; locationId: string };
-type LocationTravelIntent = Extract<TravelIntent, { kind: "locationPreview" | "location" }>;
 
-interface ActiveTravel {
-  mapId: string;
-  target: GridCoord;
-  path: GridCoord[];
-  intent: TravelIntent;
-  adjusted: boolean;
-}
+export default function ExplorePanel() {
+  const activeGame = useActiveGame();
+  const onChange = useUpdateGame();
+  const settings = useSettings();
+  const view = useMapUiStore((state) => state.view);
+  const selectedProvinceId = useMapUiStore((state) => state.selectedProvinceId);
+  const selectedRegionMarkerId = useMapUiStore((state) => state.selectedRegionMarkerId);
+  const activeSceneHotspotId = useMapUiStore((state) => state.activeSceneHotspotId);
+  const debugOpen = useMapUiStore((state) => state.debugOpen);
+  const debugResult = useMapUiStore((state) => state.debugResult);
+  const travel = useMapUiStore((state) => state.travel);
+  const setView = useMapUiStore((state) => state.setView);
+  const setSelectedProvinceId = useMapUiStore((state) => state.setSelectedProvinceId);
+  const setSelectedRegionMarkerId = useMapUiStore((state) => state.setSelectedRegionMarkerId);
+  const setActiveSceneHotspotId = useMapUiStore((state) => state.setActiveSceneHotspotId);
+  const toggleDebug = useMapUiStore((state) => state.toggleDebug);
+  const setDebugResult = useMapUiStore((state) => state.setDebugResult);
+  const setTravel = useMapUiStore((state) => state.setTravel);
 
-export default function ExplorePanel({ game, onChange }: { game: GameState; onChange: ExploreChange }) {
-  const [view, setView] = useState<ExploreView>("world");
-  const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
-  const [selectedRegionMarkerId, setSelectedRegionMarkerId] = useState<string | null>(null);
-  const [activeSceneHotspotId, setActiveSceneHotspotId] = useState<string | null>(null);
-  const [debugOpen, setDebugOpen] = useState(false);
-  const [debugResult, setDebugResult] = useState<string | null>(null);
-  const [travel, setTravel] = useState<ActiveTravel | null>(null);
+  if (!activeGame) {
+    return null;
+  }
+
+  const game = activeGame;
   const region = getRegion(game.world.regionId);
   const location = getLocation(game.world.regionId, game.world.locationId);
   const scene = getScene(game.world.regionId, game.world.locationId, game.world.sceneId);
-  const sceneImage = scene.imageKey ? sceneImages[scene.imageKey] : null;
+  const sceneImage = getSceneImage(scene.imageKey);
+  const locationSceneMapImage = getSceneImage(location.sceneMapImageKey);
   const activeSceneHotspot = scene.hotspots?.find((hotspot) => hotspot.id === activeSceneHotspotId) ?? null;
   const selectedProvince = selectedProvinceId ? getWorldProvince(selectedProvinceId) : null;
   const currentProvince = getWorldProvince(game.world.regionId);
@@ -213,9 +214,9 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
     });
   }
 
-  function openSceneHotspot(hotspot: SceneHotspot) {
+  function openSceneHotspot(hotspot: { id: string; label?: string; text?: string }) {
     setActiveSceneHotspotId(hotspot.id);
-    onChange((currentGame) => appendLog(currentGame, `${hotspot.label}：${hotspot.text}`));
+    onChange((currentGame) => appendLog(currentGame, `${hotspot.label ?? "场景"}：${hotspot.text ?? "你略作停留。"}`));
   }
 
   function completeTravel(doneTravel: ActiveTravel) {
@@ -310,7 +311,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
           debugOpen={debugOpen}
           debugResult={debugResult}
           selectedProvince={selectedProvince}
-          onToggleDebug={() => setDebugOpen((open) => !open)}
+          onToggleDebug={toggleDebug}
           onRunSelfTest={runSelfTest}
           onMapTarget={(coord) => {
             setSelectedProvinceId(null);
@@ -358,7 +359,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
                 currentLocationId={location.id}
                 selectedMarkerId={selectedRegionMarkerId}
                 locations={region.locations}
-                onToggleDebug={() => setDebugOpen((open) => !open)}
+                onToggleDebug={toggleDebug}
                 onRunSelfTest={runSelfTest}
                 onMapTarget={(coord) => {
                   setSelectedRegionMarkerId(null);
@@ -398,81 +399,519 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
             </div>
           </div>
 
-          <article className="scene-card">
-            <p className="muted">{location.description}</p>
-            <div className="inner-map-grid">
-              {location.scenes.map((item) => (
-                <button className={item.id === scene.id ? "active" : ""} key={item.id} onClick={() => setScene(item.id)}>
-                  <GameIcon name={getSceneIconName(item.type)} size={16} />
-                  <strong>{item.name}</strong>
-                  <small>{item.type}</small>
-                </button>
-              ))}
-            </div>
-            <div className="scene-detail">
-              {sceneImage ? <SceneVisual scene={scene} src={sceneImage} onSelectHotspot={openSceneHotspot} /> : null}
-              <h3>{scene.name}</h3>
-              <small>{scene.type}</small>
-              <p>{scene.description}</p>
-              <div className="action-grid">
-                {scene.actions.map((action) => (
-                  <button key={action.id} onClick={() => onChange(handleAction(game, action))}>
-                    <GameIcon name={getActionIconName(action.kind)} size={16} />
-                    {action.label}
+          {locationSceneMapImage && location.sceneMapHotspots ? (
+            <LocationSceneImageMap
+              currentScene={scene}
+              game={game}
+              hotspots={location.sceneMapHotspots}
+              imageSrc={locationSceneMapImage}
+              location={location}
+              onChange={onChange}
+              onSceneHotspotSelect={openSceneHotspot}
+              onSelectScene={setScene}
+            />
+          ) : (
+            <article className="scene-card">
+              <p className="muted">{location.description}</p>
+              <div className="inner-map-grid">
+                {location.scenes.map((item) => (
+                  <button className={item.id === scene.id ? "active" : ""} key={item.id} onClick={() => setScene(item.id)}>
+                    <GameIcon name={getSceneIconName(item.type)} size={16} />
+                    <strong>{item.name}</strong>
+                    <small>{item.type}</small>
                   </button>
                 ))}
               </div>
-            </div>
-          </article>
+              <div className="scene-detail">
+                <SceneView
+                  name={scene.name}
+                  type={scene.type}
+                  description={scene.description}
+                  imageSrc={sceneImage}
+                  hotspots={scene.hotspots}
+                  feedback={game.world.sceneMessage}
+                  onHotspotSelect={openSceneHotspot}
+                  actions={<SceneActionButtons actions={scene.actions} game={game} onChange={onChange} />}
+                />
+              </div>
+            </article>
+          )}
 
-          {scene.actions.some((action) => action.kind === "shop") ? <Shop game={game} onChange={onChange} /> : null}
-          {scene.actions.some((action) => action.kind === "taskBoard") ? <TaskBoard game={game} onChange={onChange} /> : null}
-          {activeSceneHotspot ? <SceneDialogueDialog hotspot={activeSceneHotspot} onClose={() => setActiveSceneHotspotId(null)} /> : null}
-          <p className="scene-message">{game.world.sceneMessage}</p>
+          {!(locationSceneMapImage && location.sceneMapHotspots) && scene.actions.some((action) => action.kind === "shop") ? (
+            <Shop game={game} onChange={onChange} />
+          ) : null}
+          {!(locationSceneMapImage && location.sceneMapHotspots) && scene.actions.some((action) => action.kind === "taskBoard") ? (
+            <TaskBoard game={game} onChange={onChange} />
+          ) : null}
+          <NpcDialogueSheet
+            open={Boolean(activeSceneHotspot)}
+            hotspot={activeSceneHotspot}
+            motionEnabled={settings.motion}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActiveSceneHotspotId(null);
+              }
+            }}
+          />
         </>
       )}
     </section>
   );
 }
 
-function SceneVisual({ scene, src, onSelectHotspot }: { scene: SceneNode; src: string; onSelectHotspot: (hotspot: SceneHotspot) => void }) {
+function LocationSceneImageMap({
+  currentScene,
+  game,
+  hotspots,
+  imageSrc,
+  location,
+  onChange,
+  onSceneHotspotSelect,
+  onSelectScene,
+}: {
+  currentScene: SceneNode;
+  game: GameState;
+  hotspots: LocationSceneHotspot[];
+  imageSrc: string;
+  location: LocationNode;
+  onChange: ExploreChange;
+  onSceneHotspotSelect: (hotspot: { id: string; label?: string; text?: string }) => void;
+  onSelectScene: (sceneId: string) => void;
+}) {
+  const mapId = `scene:${location.id}`;
+  const viewport = useMapUiStore((state) => state.viewportByMapId[mapId] ?? defaultMapViewport);
+  const setMapViewport = useMapUiStore((state) => state.setMapViewport);
+  const resetMapViewport = useMapUiStore((state) => state.resetMapViewport);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [dragStart, setDragStart] = useState<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [detailMapOpen, setDetailMapOpen] = useState(false);
+  const [sceneGridOpen, setSceneGridOpen] = useState(false);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const scale = viewport.scale;
+  const offset = clampLocationSceneOffset(viewport.offset, scale, viewportSize);
+  const markerScale = 1 / scale;
+  const hasShop = currentScene.actions.some((action) => action.kind === "shop");
+  const hasTaskBoard = currentScene.actions.some((action) => action.kind === "taskBoard");
+  const currentSceneImage = getSceneImage(currentScene.imageKey);
+
+  useEffect(() => {
+    if (!currentSceneImage) {
+      setDetailMapOpen(false);
+    }
+  }, [currentSceneImage]);
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) {
+      return undefined;
+    }
+
+    const updateViewportSize = () => {
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      setViewportSize((current) => (current.width === width && current.height === height ? current : { width, height }));
+    };
+
+    updateViewportSize();
+    const observer = new ResizeObserver(updateViewportSize);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const nextOffset = clampLocationSceneOffset(viewport.offset, scale, viewportSize);
+    if (nextOffset.x !== viewport.offset.x || nextOffset.y !== viewport.offset.y) {
+      setMapViewport(mapId, { offset: nextOffset });
+    }
+  }, [mapId, scale, setMapViewport, viewport.offset.x, viewport.offset.y, viewportSize.width, viewportSize.height]);
+
+  function clampScale(nextScale: number) {
+    return Math.min(4, Math.max(1, Number(nextScale.toFixed(2))));
+  }
+
+  function zoom(delta: number) {
+    const nextScale = clampScale(scale + delta);
+    setMapViewport(mapId, {
+      scale: nextScale,
+      offset: clampLocationSceneOffset(offset, nextScale, viewportSize),
+    });
+  }
+
+  function stopMapGesture(event: PointerEvent<HTMLElement>) {
+    event.stopPropagation();
+    setDragStart(null);
+  }
+
+  if (detailMapOpen && currentSceneImage) {
+    return (
+      <SceneDetailImageMap
+        game={game}
+        imageSrc={currentSceneImage}
+        location={location}
+        onBack={() => setDetailMapOpen(false)}
+        onChange={onChange}
+        onSceneHotspotSelect={onSceneHotspotSelect}
+        scene={currentScene}
+      />
+    );
+  }
+
   return (
-    <div className="scene-visual-frame">
-      <img className="scene-visual" src={src} alt={scene.name} draggable={false} />
-      {scene.hotspots?.map((hotspot) => (
-        <button
-          aria-label={`与${hotspot.label}对话`}
-          className="scene-hotspot-button"
-          key={hotspot.id}
-          style={{ "--hotspot-x": `${hotspot.x}%`, "--hotspot-y": `${hotspot.y}%` } as CSSProperties}
-          type="button"
-          onClick={() => onSelectHotspot(hotspot)}
+    <div className="location-scene-image-map">
+      <div
+        ref={viewportRef}
+        className="world-map-viewport location-scene-map-viewport"
+        onWheel={(event) => {
+          event.preventDefault();
+          zoom(event.deltaY < 0 ? 0.12 : -0.12);
+        }}
+        onPointerDown={(event) => {
+          if (isInteractiveMapTarget(event.target)) {
+            return;
+          }
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setDragStart({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: offset.x, originY: offset.y });
+        }}
+        onPointerMove={(event) => {
+          if (!dragStart || dragStart.pointerId !== event.pointerId) {
+            return;
+          }
+          setMapViewport(mapId, {
+            offset: clampLocationSceneOffset(
+              {
+                x: dragStart.originX + event.clientX - dragStart.x,
+                y: dragStart.originY + event.clientY - dragStart.y,
+              },
+              scale,
+              viewportSize,
+            ),
+          });
+        }}
+        onPointerUp={() => setDragStart(null)}
+        onPointerCancel={() => setDragStart(null)}
+      >
+        <div className="location-scene-map-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+          <div>
+            <h3>{location.name}</h3>
+            <span>{currentScene.name}</span>
+          </div>
+          <div className="map-controls">
+            <button onClick={() => zoom(0.18)} aria-label="放大场景图">
+              <GameIcon name="action-zoom-in" size={16} />
+            </button>
+            <button onClick={() => zoom(-0.18)} aria-label="缩小场景图">
+              <GameIcon name="action-zoom-out" size={16} />
+            </button>
+            <button onClick={() => resetMapViewport(mapId)}>
+              <GameIcon name="action-reset" size={16} />
+              重置
+            </button>
+            <button className={sceneGridOpen ? "active" : ""} onClick={() => setSceneGridOpen((open) => !open)}>
+              网格
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="world-map-canvas location-scene-map-canvas"
+          style={{
+            transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
+          }}
         >
-          <span>{hotspot.label}</span>
-        </button>
+          <img src={imageSrc} alt={`${location.name}场景图`} draggable={false} loading="lazy" />
+          {sceneGridOpen ? <LocationSceneGridOverlay /> : null}
+          {hotspots.map((hotspot) => (
+            <button
+              aria-label={`前往${hotspot.label}`}
+              className={`map-zone-label location-scene-zone-label${hotspot.sceneId === currentScene.id ? " active" : ""}`}
+              key={hotspot.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                const nextScene = location.scenes.find((item) => item.id === hotspot.sceneId);
+                const nextSceneImage = getSceneImage(nextScene?.imageKey);
+                onSelectScene(hotspot.sceneId);
+                setDetailMapOpen(Boolean(nextSceneImage));
+                setDrawerOpen(!nextSceneImage);
+              }}
+              onPointerDown={stopMapGesture}
+              onPointerMove={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              style={getPercentAnchorStyle(hotspot.x, hotspot.y, markerScale)}
+              type="button"
+            >
+              {hotspot.label}
+            </button>
+          ))}
+        </div>
+
+        {drawerOpen ? (
+          <section className="world-info-drawer location-scene-drawer" onPointerDown={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <h2>
+                <GameIcon name={getSceneIconName(currentScene.type)} size={18} />
+                {currentScene.name}
+              </h2>
+              <button className="ghost-button location-scene-drawer-close" onClick={() => setDrawerOpen(false)}>
+                <GameIcon name="action-back" size={15} />
+                返回
+              </button>
+            </div>
+            <small>{currentScene.type}</small>
+            <p>{currentScene.description}</p>
+            {game.world.sceneMessage ? <p className="scene-message">{game.world.sceneMessage}</p> : null}
+            {currentScene.hotspots?.length ? (
+              <div className="action-grid">
+                {currentScene.hotspots.map((hotspot) => (
+                  <button key={hotspot.id} onClick={() => onSceneHotspotSelect(hotspot)}>
+                    <GameIcon name={getActionIconName("dialogue")} size={16} />
+                    {hotspot.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <SceneActionButtons actions={currentScene.actions} game={game} onChange={onChange} />
+            {hasShop ? <Shop game={game} onChange={onChange} /> : null}
+            {hasTaskBoard ? <TaskBoard game={game} onChange={onChange} /> : null}
+          </section>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SceneDetailImageMap({
+  game,
+  imageSrc,
+  location,
+  onBack,
+  onChange,
+  onSceneHotspotSelect,
+  scene,
+}: {
+  game: GameState;
+  imageSrc: string;
+  location: LocationNode;
+  onBack: () => void;
+  onChange: ExploreChange;
+  onSceneHotspotSelect: (hotspot: { id: string; label?: string; text?: string }) => void;
+  scene: SceneNode;
+}) {
+  const mapId = `scene-detail:${location.id}:${scene.id}`;
+  const viewport = useMapUiStore((state) => state.viewportByMapId[mapId] ?? defaultMapViewport);
+  const setMapViewport = useMapUiStore((state) => state.setMapViewport);
+  const resetMapViewport = useMapUiStore((state) => state.resetMapViewport);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [dragStart, setDragStart] = useState<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const scale = viewport.scale;
+  const offset = clampSceneImageMapOffset(viewport.offset, scale, viewportSize, SCENE_DETAIL_MAP_ASPECT_RATIO);
+  const hasShop = scene.actions.some((action) => action.kind === "shop");
+  const hasTaskBoard = scene.actions.some((action) => action.kind === "taskBoard");
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) {
+      return undefined;
+    }
+
+    const updateViewportSize = () => {
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      setViewportSize((current) => (current.width === width && current.height === height ? current : { width, height }));
+    };
+
+    updateViewportSize();
+    const observer = new ResizeObserver(updateViewportSize);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const nextOffset = clampSceneImageMapOffset(viewport.offset, scale, viewportSize, SCENE_DETAIL_MAP_ASPECT_RATIO);
+    if (nextOffset.x !== viewport.offset.x || nextOffset.y !== viewport.offset.y) {
+      setMapViewport(mapId, { offset: nextOffset });
+    }
+  }, [mapId, scale, setMapViewport, viewport.offset.x, viewport.offset.y, viewportSize.width, viewportSize.height]);
+
+  function clampScale(nextScale: number) {
+    return Math.min(4, Math.max(1, Number(nextScale.toFixed(2))));
+  }
+
+  function zoom(delta: number) {
+    const nextScale = clampScale(scale + delta);
+    setMapViewport(mapId, {
+      scale: nextScale,
+      offset: clampSceneImageMapOffset(offset, nextScale, viewportSize, SCENE_DETAIL_MAP_ASPECT_RATIO),
+    });
+  }
+
+  return (
+    <div className="location-scene-image-map">
+      <div
+        ref={viewportRef}
+        className="world-map-viewport location-scene-map-viewport scene-detail-map-viewport"
+        onWheel={(event) => {
+          event.preventDefault();
+          zoom(event.deltaY < 0 ? 0.12 : -0.12);
+        }}
+        onPointerDown={(event) => {
+          if (isInteractiveMapTarget(event.target)) {
+            return;
+          }
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setDragStart({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: offset.x, originY: offset.y });
+        }}
+        onPointerMove={(event) => {
+          if (!dragStart || dragStart.pointerId !== event.pointerId) {
+            return;
+          }
+          setMapViewport(mapId, {
+            offset: clampSceneImageMapOffset(
+              {
+                x: dragStart.originX + event.clientX - dragStart.x,
+                y: dragStart.originY + event.clientY - dragStart.y,
+              },
+              scale,
+              viewportSize,
+              SCENE_DETAIL_MAP_ASPECT_RATIO,
+            ),
+          });
+        }}
+        onPointerUp={() => setDragStart(null)}
+        onPointerCancel={() => setDragStart(null)}
+      >
+        <div className="location-scene-map-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+          <div>
+            <h3>{scene.name}</h3>
+            <span>{location.name} / 第四级地图</span>
+          </div>
+          <div className="map-controls">
+            <button
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onBack();
+              }}
+              type="button"
+            >
+              <GameIcon name="action-back" size={15} />
+              返回
+            </button>
+            <button onClick={() => zoom(0.18)} aria-label="放大场景图">
+              <GameIcon name="action-zoom-in" size={16} />
+            </button>
+            <button onClick={() => zoom(-0.18)} aria-label="缩小场景图">
+              <GameIcon name="action-zoom-out" size={16} />
+            </button>
+            <button onClick={() => resetMapViewport(mapId)}>
+              <GameIcon name="action-reset" size={16} />
+              重置
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="world-map-canvas scene-detail-map-canvas"
+          style={{
+            transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
+          }}
+        >
+          <img src={imageSrc} alt={`${scene.name}地图`} draggable={false} loading="lazy" />
+          {scene.hotspots?.map((hotspot) => (
+            <SceneHotspot key={hotspot.id} hotspot={hotspot} onSelect={onSceneHotspotSelect} />
+          ))}
+        </div>
+
+        <section className="world-info-drawer location-scene-drawer scene-detail-map-drawer" onPointerDown={(event) => event.stopPropagation()}>
+          <div className="section-heading">
+            <h2>
+              <GameIcon name={getSceneIconName(scene.type)} size={18} />
+              {scene.name}
+            </h2>
+            <span>{scene.type}</span>
+          </div>
+          <p>{scene.description}</p>
+          {game.world.sceneMessage ? <p className="scene-message">{game.world.sceneMessage}</p> : null}
+          <SceneActionButtons actions={scene.actions} game={game} onChange={onChange} />
+          {hasShop ? <Shop game={game} onChange={onChange} /> : null}
+          {hasTaskBoard ? <TaskBoard game={game} onChange={onChange} /> : null}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function clampLocationSceneOffset(
+  offset: { x: number; y: number },
+  scale: number,
+  viewportSize: { width: number; height: number },
+) {
+  return clampSceneImageMapOffset(offset, scale, viewportSize, LOCATION_SCENE_ASPECT_RATIO);
+}
+
+function clampSceneImageMapOffset(
+  offset: { x: number; y: number },
+  scale: number,
+  viewportSize: { width: number; height: number },
+  aspectRatio: number,
+) {
+  if (viewportSize.width <= 0 || viewportSize.height <= 0) {
+    return { x: offset.x, y: 0 };
+  }
+
+  const canvasWidth = viewportSize.height * aspectRatio;
+  const scaledCanvasWidth = canvasWidth * scale;
+  const maxOffsetX = Math.max(0, (scaledCanvasWidth - viewportSize.width) / 2);
+
+  return {
+    x: clampNumber(offset.x, -maxOffsetX, maxOffsetX),
+    y: 0,
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function LocationSceneGridOverlay() {
+  const cells = [];
+  for (let y = 0; y < LOCATION_SCENE_GRID_HEIGHT; y += 1) {
+    for (let x = 0; x < LOCATION_SCENE_GRID_WIDTH; x += 1) {
+      cells.push({ x, y });
+    }
+  }
+
+  return (
+    <div className="location-scene-grid-overlay" aria-hidden="true">
+      {cells.map((cell) => (
+        <span
+          className="location-scene-grid-cell"
+          key={`${cell.x}-${cell.y}`}
+          style={{
+            left: `${(cell.x / LOCATION_SCENE_GRID_WIDTH) * 100}%`,
+            top: `${(cell.y / LOCATION_SCENE_GRID_HEIGHT) * 100}%`,
+            width: `${100 / LOCATION_SCENE_GRID_WIDTH}%`,
+            height: `${100 / LOCATION_SCENE_GRID_HEIGHT}%`,
+          }}
+        >
+          {cell.x},{cell.y}
+        </span>
       ))}
     </div>
   );
 }
 
-function SceneDialogueDialog({ hotspot, onClose }: { hotspot: SceneHotspot; onClose: () => void }) {
+function SceneActionButtons({ actions, game, onChange }: { actions: SceneAction[]; game: GameState; onChange: ExploreChange }) {
   return (
-    <div className="scene-dialogue-backdrop" role="dialog" aria-modal="true" aria-label={`${hotspot.label}对话`} onClick={onClose}>
-      <section className="scene-dialogue-card" onClick={(event) => event.stopPropagation()}>
-        <div className="section-heading">
-          <h2>
-            <GameIcon name="module-explore" size={18} />
-            {hotspot.label}
-          </h2>
-          <span>{hotspot.title}</span>
-        </div>
-        <p>{hotspot.text}</p>
-        <div className="world-drawer-actions">
-          <button className="ghost-button" type="button" onClick={onClose}>
-            返回
-          </button>
-        </div>
-      </section>
+    <div className="action-grid">
+      {actions.map((action) => (
+        <button key={action.id} onClick={() => onChange(handleAction(game, action))}>
+          <GameIcon name={getActionIconName(action.kind)} size={16} />
+          {action.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -504,10 +943,13 @@ function WorldMapView({
   onCloseProvince: () => void;
   onEnterProvince: (province: WorldProvince) => void;
 }) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const viewport = useMapUiStore((state) => state.viewportByMapId[mapData.mapId] ?? defaultMapViewport);
+  const setMapViewport = useMapUiStore((state) => state.setMapViewport);
+  const resetMapViewport = useMapUiStore((state) => state.resetMapViewport);
   const [dragStart, setDragStart] = useState<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
   const [didDrag, setDidDrag] = useState(false);
+  const scale = viewport.scale;
+  const offset = viewport.offset;
   const currentCoord = getNavigationCoord(game, mapData.mapId);
   const targetCoord = travel?.mapId === mapData.mapId ? travel.target : null;
   const visiblePath = travel?.mapId === mapData.mapId ? [currentCoord, ...travel.path] : [];
@@ -520,12 +962,11 @@ function WorldMapView({
   }
 
   function zoom(delta: number) {
-    setScale((current) => clampScale(current + delta));
+    setMapViewport(mapData.mapId, { scale: clampScale(scale + delta) });
   }
 
   function resetMap() {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
+    resetMapViewport(mapData.mapId);
   }
 
   function stopMapGesture(event: PointerEvent<HTMLElement>) {
@@ -586,10 +1027,7 @@ function WorldMapView({
           if (Math.abs(deltaX) + Math.abs(deltaY) > 5) {
             setDidDrag(true);
           }
-          setOffset({
-            x: dragStart.originX + deltaX,
-            y: dragStart.originY + deltaY,
-          });
+          setMapViewport(mapData.mapId, { offset: { x: dragStart.originX + deltaX, y: dragStart.originY + deltaY } });
         }}
         onPointerUp={handlePointerUp}
         onPointerCancel={() => {
@@ -603,7 +1041,7 @@ function WorldMapView({
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={worldMapSrc} alt="修仙大世界地图" draggable={false} />
+          <img src={mapImages.world} alt="修仙大世界地图" draggable={false} loading="lazy" />
           {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} /> : null}
           <GridPlayerMarker mapData={mapData} coord={currentCoord} markerScale={1 / scale} />
           {worldProvinces.map((province) => {
@@ -700,10 +1138,13 @@ function RegionImageMapView({
   onCloseMarker: () => void;
   onEnterLocation: (locationId: string) => void;
 }) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const viewport = useMapUiStore((state) => state.viewportByMapId[mapData.mapId] ?? defaultMapViewport);
+  const setMapViewport = useMapUiStore((state) => state.setMapViewport);
+  const resetMapViewport = useMapUiStore((state) => state.resetMapViewport);
   const [dragStart, setDragStart] = useState<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
   const [didDrag, setDidDrag] = useState(false);
+  const scale = viewport.scale;
+  const offset = viewport.offset;
   const selectedMarker = selectedMarkerId ? config.markers.find((marker) => marker.locationId === selectedMarkerId) : null;
   const selectedLocation = selectedMarker ? locations.find((item) => item.id === selectedMarker.locationId) : null;
   const travelIntent = travel?.mapId === mapData.mapId ? travel.intent : null;
@@ -721,12 +1162,11 @@ function RegionImageMapView({
   }
 
   function zoom(delta: number) {
-    setScale((current) => clampScale(current + delta));
+    setMapViewport(mapData.mapId, { scale: clampScale(scale + delta) });
   }
 
   function resetMap() {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
+    resetMapViewport(mapData.mapId);
   }
 
   function stopMapGesture(event: PointerEvent<HTMLElement>) {
@@ -787,10 +1227,7 @@ function RegionImageMapView({
           if (Math.abs(deltaX) + Math.abs(deltaY) > 5) {
             setDidDrag(true);
           }
-          setOffset({
-            x: dragStart.originX + deltaX,
-            y: dragStart.originY + deltaY,
-          });
+          setMapViewport(mapData.mapId, { offset: { x: dragStart.originX + deltaX, y: dragStart.originY + deltaY } });
         }}
         onPointerUp={handlePointerUp}
         onPointerCancel={() => {
@@ -804,7 +1241,7 @@ function RegionImageMapView({
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={regionMapImages[config.imageKey]} alt={`${regionName}区域地图`} draggable={false} />
+          <img src={regionMapImages[config.imageKey]} alt={`${regionName}区域地图`} draggable={false} loading="lazy" />
           {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} /> : null}
           <GridPlayerMarker mapData={mapData} coord={currentCoord} markerScale={1 / scale} />
           {config.markers.map((marker) => {
@@ -820,7 +1257,7 @@ function RegionImageMapView({
                   currentLocationId === marker.locationId ? "current" : ""
                 }`}
                 key={marker.locationId}
-                style={getGridAnchorStyle(mapData, zone.anchor, 1 / scale)}
+                style={getGridAnchorStyle(mapData, zone.anchor, 1 / scale, marker.labelOffsetX, marker.labelOffsetY)}
                 onPointerDown={stopMapGesture}
                 onPointerMove={(event) => event.stopPropagation()}
                 onPointerUp={(event) => event.stopPropagation()}
@@ -930,10 +1367,20 @@ function GridPlayerMarker({ mapData, coord, markerScale }: { mapData: GridMapDat
   );
 }
 
-function getGridAnchorStyle(mapData: GridMapData, coord: GridCoord, markerScale: number): CSSProperties {
+function getGridAnchorStyle(mapData: GridMapData, coord: GridCoord, markerScale: number, offsetX = 0, offsetY = 0): CSSProperties {
   return {
     left: `${((coord.x + 0.5) / mapData.width) * 100}%`,
     top: `${((coord.y + 0.5) / mapData.height) * 100}%`,
+    "--marker-scale": `${markerScale}`,
+    "--label-offset-x": `${offsetX}px`,
+    "--label-offset-y": `${offsetY}px`,
+  } as CSSProperties;
+}
+
+function getPercentAnchorStyle(x: number, y: number, markerScale: number): CSSProperties {
+  return {
+    left: `${x}%`,
+    top: `${y}%`,
     "--marker-scale": `${markerScale}`,
   } as CSSProperties;
 }

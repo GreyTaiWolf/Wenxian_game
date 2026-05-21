@@ -9,7 +9,7 @@ export const GRID_MAP_HEIGHT = 32;
 export const GRID_CELL_SIZE = 32;
 
 export const defaultWorldCoord: GridCoord = { x: 23, y: 13 };
-export const defaultCentralCoord: GridCoord = { x: 24, y: 15 };
+export const defaultCentralCoord: GridCoord = { x: 10, y: 12 };
 export const defaultSouthRidgeCoord: GridCoord = { x: 25, y: 9 };
 
 export const worldProvincePortals: Record<string, GridCoord> = {

@@ -2,14 +2,10 @@ import { useState } from "react";
 import { getRealm } from "../data/progression";
 import type { RootSave, SaveSlot, SettingsState } from "../types";
 import { GameIcon } from "./GameIcon";
-
-interface MainMenuProps {
-  rootSave: RootSave;
-  onContinue: () => void;
-  onCreate: (slotIndex: number, name: string) => void;
-  onDelete: (slotId: string) => void;
-  onUpdateSettings: (settings: SettingsState) => void;
-}
+import { usePwaStore } from "../stores/pwaStore";
+import { useSaveStore } from "../stores/saveStore";
+import { useUiStore } from "../stores/uiStore";
+import { useGameToast } from "./ui";
 
 function formatSlot(slot: SaveSlot | null, index: number): string {
   if (!slot) {
@@ -19,7 +15,12 @@ function formatSlot(slot: SaveSlot | null, index: number): string {
   return `存档 ${index + 1}：${slot.game.player.name} · ${realm.name}`;
 }
 
-export default function MainMenu({ rootSave, onContinue, onCreate, onDelete, onUpdateSettings }: MainMenuProps) {
+export default function MainMenu() {
+  const rootSave = useSaveStore((state) => state.rootSave);
+  const createGame = useSaveStore((state) => state.createGame);
+  const deleteSlot = useSaveStore((state) => state.deleteSlot);
+  const updateSettings = useSaveStore((state) => state.updateSettings);
+  const setScreen = useUiStore((state) => state.setScreen);
   const recentSlot = rootSave.slots.find((slot) => slot?.id === rootSave.recentSlotId) ?? null;
 
   return (
@@ -34,12 +35,18 @@ export default function MainMenu({ rootSave, onContinue, onCreate, onDelete, onU
       </section>
 
       <section className="menu-card">
-        <button className="primary-action" disabled={!recentSlot} onClick={onContinue}>
+        <button className="primary-action" disabled={!recentSlot} onClick={() => setScreen("game")}>
           <GameIcon name="action-back" size={18} />
           继续
           <small>{recentSlot ? `${recentSlot.game.player.name} · ${getRealm(recentSlot.game.player.realmId).name}` : "暂无可继续存档"}</small>
         </button>
-        <NewGameForm rootSave={rootSave} onCreate={onCreate} />
+        <NewGameForm
+          rootSave={rootSave}
+          onCreate={(slotIndex, name) => {
+            createGame(slotIndex, name);
+            setScreen("game");
+          }}
+        />
       </section>
 
       <section className="menu-card">
@@ -58,7 +65,7 @@ export default function MainMenu({ rootSave, onContinue, onCreate, onDelete, onU
                 <small>{slot ? `最后游玩：${new Date(slot.updatedAt).toLocaleString()}` : "可创建新角色"}</small>
               </div>
               {slot ? (
-                <button className="ghost-button danger" onClick={() => onDelete(slot.id)}>
+                <button className="ghost-button danger" onClick={() => deleteSlot(slot.id)}>
                   删除
                 </button>
               ) : null}
@@ -79,7 +86,7 @@ export default function MainMenu({ rootSave, onContinue, onCreate, onDelete, onU
           文字大小
           <select
             value={rootSave.settings.textSize}
-            onChange={(event) => onUpdateSettings({ ...rootSave.settings, textSize: event.target.value as SettingsState["textSize"] })}
+            onChange={(event) => updateSettings({ ...rootSave.settings, textSize: event.target.value as SettingsState["textSize"] })}
           >
             <option value="small">小</option>
             <option value="normal">标准</option>
@@ -91,7 +98,7 @@ export default function MainMenu({ rootSave, onContinue, onCreate, onDelete, onU
           <input
             type="checkbox"
             checked={rootSave.settings.motion}
-            onChange={(event) => onUpdateSettings({ ...rootSave.settings, motion: event.target.checked })}
+            onChange={(event) => updateSettings({ ...rootSave.settings, motion: event.target.checked })}
           />
         </label>
         <label className="setting-row">
@@ -99,11 +106,86 @@ export default function MainMenu({ rootSave, onContinue, onCreate, onDelete, onU
           <input
             type="checkbox"
             checked={rootSave.settings.autoSave}
-            onChange={(event) => onUpdateSettings({ ...rootSave.settings, autoSave: event.target.checked })}
+            onChange={(event) => updateSettings({ ...rootSave.settings, autoSave: event.target.checked })}
           />
         </label>
+        <PwaStatusPanel />
       </section>
     </main>
+  );
+}
+
+function PwaStatusPanel() {
+  const { notify } = useGameToast();
+  const isOnline = usePwaStore((state) => state.isOnline);
+  const offlineReady = usePwaStore((state) => state.offlineReady);
+  const needRefresh = usePwaStore((state) => state.needRefresh);
+  const installPromptAvailable = usePwaStore((state) => state.installPromptAvailable);
+  const isStandalone = usePwaStore((state) => state.isStandalone);
+  const registrationError = usePwaStore((state) => state.registrationError);
+  const promptInstall = usePwaStore((state) => state.promptInstall);
+  const updateNow = usePwaStore((state) => state.updateNow);
+  const dismissUpdate = usePwaStore((state) => state.dismissUpdate);
+
+  async function handleInstall() {
+    const accepted = await promptInstall();
+    notify({ title: accepted ? "安装已开始" : "已取消安装", tone: accepted ? "success" : "default" });
+  }
+
+  function handleDismissUpdate() {
+    dismissUpdate();
+    notify({ title: "下次启动生效", tone: "gold" });
+  }
+
+  async function handleUpdateNow() {
+    await updateNow();
+  }
+
+  return (
+    <div className="pwa-status-panel">
+      <div className="pwa-status-row">
+        <span>
+          <GameIcon name="module-explore" size={15} />
+          离线游玩
+        </span>
+        <strong className={offlineReady ? "ready" : ""}>{offlineReady ? "已准备" : "准备中"}</strong>
+      </div>
+      <div className="pwa-status-row">
+        <span>
+          <GameIcon name="resource-spirit" size={15} />
+          网络状态
+        </span>
+        <strong className={isOnline ? "ready" : "offline"}>{isOnline ? "在线" : "离线"}</strong>
+      </div>
+      <div className="pwa-status-row">
+        <span>
+          <GameIcon name="action-settings" size={15} />
+          桌面安装
+        </span>
+        <strong className={isStandalone ? "ready" : ""}>{isStandalone ? "已安装" : installPromptAvailable ? "可安装" : "待触发"}</strong>
+      </div>
+      {installPromptAvailable && !isStandalone ? (
+        <button className="primary-action compact" type="button" onClick={() => void handleInstall()}>
+          安装到桌面
+          <small>像 App 一样打开</small>
+        </button>
+      ) : null}
+      {needRefresh ? (
+        <div className="pwa-update-card">
+          <strong>新版本已准备</strong>
+          <small>不强制刷新，当前修行不中断。</small>
+          <div className="pwa-update-actions">
+            <button className="ghost-button" type="button" onClick={handleDismissUpdate}>
+              下次启动生效
+            </button>
+            <button className="primary-action compact" type="button" onClick={() => void handleUpdateNow()}>
+              立即更新
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {registrationError ? <small className="pwa-error">离线缓存未启动：{registrationError}</small> : null}
+    </div>
   );
 }
 

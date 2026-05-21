@@ -1,6 +1,6 @@
 import { buildEquipmentDisplayName } from "./equipmentNameRules";
 import { itemGradeLabels, itemGradeMetas, itemGradeNamePrefixes, itemGradeOrder, normalizeQuality, qualityGrades } from "./qualityGrades";
-import type { EquipmentBonus, EquipmentSlotId, ItemAffix, ItemConfig, ItemGrade, ItemTierId, MajorRealmId, RealmPhaseId } from "../types";
+import type { EquipmentSlotId, ItemAffix, ItemConfig, ItemGrade, ItemTierId, MajorRealmId, RealmPhaseId } from "../types";
 
 export { itemGradeLabels, itemGradeMetas, itemGradeNamePrefixes, itemGradeOrder, qualityGrades };
 
@@ -47,8 +47,6 @@ interface BaseItemConfig {
   affixes?: ItemAffix[];
   equipment?: {
     slot: EquipmentSlotId;
-    baseBonuses: EquipmentBonus;
-    basePowerBonus: number;
     requiredMajorRealm?: MajorRealmId;
     requiredPhase?: RealmPhaseId;
   };
@@ -73,11 +71,8 @@ const gradePreviewEquipmentItems: BaseItemConfig[] = itemGradeOrder.map((grade, 
   grade,
   description: `用于测试${itemGradeLabels[grade]}装备边框、动效、品级标签和详情特效。`,
   basePrice: 1,
-  affixes: itemGradeAffixLibrary[grade],
   equipment: {
     slot: "weapon",
-    baseBonuses: { attack: 6 + index * 2 },
-    basePowerBonus: 12 + index * 4,
     requiredMajorRealm: "mortal",
   },
 }));
@@ -93,8 +88,6 @@ const baseItems: BaseItemConfig[] = [
     basePrice: 40,
     equipment: {
       slot: "weapon",
-      baseBonuses: { attack: 4 },
-      basePowerBonus: 18,
       requiredMajorRealm: "mortal",
     },
   },
@@ -108,8 +101,6 @@ const baseItems: BaseItemConfig[] = [
     basePrice: 28,
     equipment: {
       slot: "robe",
-      baseBonuses: { maxHp: 18, defense: 2 },
-      basePowerBonus: 10,
       requiredMajorRealm: "mortal",
     },
   },
@@ -123,8 +114,6 @@ const baseItems: BaseItemConfig[] = [
     basePrice: 18,
     equipment: {
       slot: "boots",
-      baseBonuses: { speed: 1 },
-      basePowerBonus: 5,
       requiredMajorRealm: "mortal",
     },
   },
@@ -237,8 +226,6 @@ const baseItems: BaseItemConfig[] = [
     basePrice: 220,
     equipment: {
       slot: "weapon",
-      baseBonuses: { attack: 12 },
-      basePowerBonus: 42,
       requiredMajorRealm: "qi",
     },
   },
@@ -333,31 +320,15 @@ function createItem(config: BaseItemConfig): ItemConfig {
     description: config.description,
     price: typeof config.basePrice === "number" ? Math.round(config.basePrice * meta.priceMultiplier) : undefined,
     combatHeal: config.baseCombatHeal ? roundToFive(config.baseCombatHeal * meta.effectMultiplier) : undefined,
-    affixes: config.affixes,
+    affixes: config.category === "equipment" ? undefined : config.affixes,
     equipment: config.equipment
       ? {
           slot: config.equipment.slot,
-          bonuses: scaleBonuses(config.equipment.baseBonuses, meta.effectMultiplier),
-          powerBonus: Math.max(1, Math.round(config.equipment.basePowerBonus * meta.effectMultiplier)),
           requiredMajorRealm: config.equipment.requiredMajorRealm,
           requiredPhase: config.equipment.requiredPhase,
         }
       : undefined,
   };
-}
-
-function scaleBonuses(bonuses: EquipmentBonus, multiplier: number): EquipmentBonus {
-  return Object.fromEntries(
-    Object.entries(bonuses).map(([key, value]) => {
-      const safeValue = value ?? 0;
-      const scaled = key === "dodgeRate" || key === "critRate" || key === "critDamage" ? roundRate(safeValue * multiplier) : Math.max(1, Math.round(safeValue * multiplier));
-      return [key, scaled];
-    }),
-  ) as EquipmentBonus;
-}
-
-function roundRate(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 function roundToFive(value: number): number {

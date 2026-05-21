@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { getRealm } from "../data/progression";
 import { getEffectivePower } from "../game/equipment";
 import { formatCalendar } from "../game/time";
 import type { GameState } from "../types";
 import { GameIcon } from "./GameIcon";
+import { GameSettingsDialog } from "./GameSettingsDialog";
 
 export function TopStatus({ game, onExit }: { game: GameState; onExit: () => void }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const realm = getRealm(game.player.realmId);
   return (
     <header className="top-status">
@@ -16,7 +19,7 @@ export function TopStatus({ game, onExit }: { game: GameState; onExit: () => voi
             {realm.name}
           </span>
         </div>
-        <button className="icon-button" aria-label="返回主菜单" title="返回主菜单" onClick={onExit}>
+        <button className="icon-button" aria-label="设置" title="设置" onClick={() => setSettingsOpen(true)}>
           <GameIcon name="action-settings" size={18} />
         </button>
       </div>
@@ -42,6 +45,7 @@ export function TopStatus({ game, onExit }: { game: GameState; onExit: () => voi
         <StatusMeter icon="resource-life" label="寿元" value={Number(game.player.age.toFixed(2))} max={game.player.lifespan} tone="gold" />
         <StatusMeter icon="resource-spirit" label="修为" value={game.player.cultivation} max={realm.requiredCultivation} tone="primary" />
       </div>
+      <GameSettingsDialog game={game} open={settingsOpen} onOpenChange={setSettingsOpen} onExitToMenu={onExit} />
     </header>
   );
 }

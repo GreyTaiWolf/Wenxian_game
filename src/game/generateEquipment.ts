@@ -7,6 +7,8 @@ import { getWeaponAttackRange } from "../data/weaponAttackRanges";
 import { applyBalanceLimits, isSpiritSenseEnabled, qualityCanUseSpecialAffixes } from "./equipmentBalanceLimits";
 import type { AffixCategory, EquipmentBonus, EquipmentInstance, EquipmentSlotId, ItemAffix, ItemGrade, MajorRealmId, RealmPhaseId, Stats } from "../types";
 
+export const EQUIPMENT_BALANCE_VERSION = 20260521;
+
 export interface GenerateEquipmentParams {
   itemId: string;
   realmTier: MajorRealmId;
@@ -40,6 +42,7 @@ export function generateEquipment(params: GenerateEquipmentParams): EquipmentIns
     bonuses,
     powerBonus: calculateEquipmentPowerBonus(bonuses),
     affixes,
+    equipmentBalanceVersion: EQUIPMENT_BALANCE_VERSION,
     createdAt: params.createdAt ?? new Date().toISOString(),
   };
   return applyBalanceLimits(instance);
@@ -191,7 +194,7 @@ function rollAffixValue(config: EquipmentAffixConfig, realmTier: MajorRealmId, q
   return Math.max(1, Math.round(raw));
 }
 
-function calculateAffixBonuses(affixes: ItemAffix[]): EquipmentBonus {
+export function calculateAffixBonuses(affixes: ItemAffix[]): EquipmentBonus {
   return affixes.reduce<EquipmentBonus>((bonuses, affix) => {
     if (!isDirectStat(affix.stat) || typeof affix.value !== "number") {
       return bonuses;
@@ -201,7 +204,7 @@ function calculateAffixBonuses(affixes: ItemAffix[]): EquipmentBonus {
   }, {});
 }
 
-function mergeBonuses(...sources: EquipmentBonus[]): EquipmentBonus {
+export function mergeBonuses(...sources: EquipmentBonus[]): EquipmentBonus {
   return sources.reduce<EquipmentBonus>((total, source) => {
     Object.entries(source).forEach(([key, value]) => {
       const statKey = key as keyof Stats;
@@ -211,7 +214,7 @@ function mergeBonuses(...sources: EquipmentBonus[]): EquipmentBonus {
   }, {});
 }
 
-function calculateEquipmentPowerBonus(bonuses: EquipmentBonus): number {
+export function calculateEquipmentPowerBonus(bonuses: EquipmentBonus): number {
   return Math.max(
     1,
     Math.round(

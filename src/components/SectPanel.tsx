@@ -44,7 +44,7 @@ export default function SectPanel({ game }: { game: GameState }) {
             <GameIcon name="combat-log" size={18} />
             宗门任务
           </h2>
-          <span>前往青云城任务榜完成</span>
+          <span>前往青云镇公告栏完成</span>
         </div>
         {tasks.map((task) => (
           <div className="task-row" key={task.id}>

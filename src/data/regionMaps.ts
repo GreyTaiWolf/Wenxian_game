@@ -2,6 +2,8 @@ export interface RegionMapMarker {
   locationId: string;
   x: number;
   y: number;
+  labelOffsetX?: number;
+  labelOffsetY?: number;
   recommendedRealm: string;
   danger: string;
 }
@@ -19,7 +21,7 @@ export const regionMaps: RegionMapConfig[] = [
     imageKey: "zhongzhou",
     maxScale: 4,
     markers: [
-      { locationId: "qingyun_city", x: 51, y: 48, recommendedRealm: "炼气初期", danger: "安全主城，可交易、接取任务并递交青云令牌入宗。" },
+      { locationId: "qingyun_city", x: 22, y: 39, recommendedRealm: "炼气初期", danger: "安全主镇，可交易、接取任务并递交青云令牌入宗。" },
       { locationId: "tian_xuan_gate", x: 59, y: 52, recommendedRealm: "炼气初期", danger: "天玄城门守卫森严，城墙阵纹常年亮起，是进入天玄城的正门。" },
       { locationId: "black_wind_mountain", x: 14, y: 39, recommendedRealm: "炼气初期", danger: "山中有妖兽与黑风妖修出没，建议备好回春散。" },
       { locationId: "herb_valley", x: 45, y: 80, recommendedRealm: "炼气初期", danger: "谷中可采集灵草和凝气草，但守草妖兽会护住药田。" },

@@ -206,7 +206,7 @@ export function createNewGame(name: string): GameState {
       sectContribution: 0,
       sectReputation: 0,
       tasks: {},
-      logs: ["你在青云城外醒来，远处钟声如水，仙途由此开始。"],
+      logs: ["你在青云镇外醒来，远处钟声如水，仙途由此开始。"],
       sceneMessage: "选择城中地点，或先去修炼聚气。",
       calendar: normalizeCalendarDate({ year: 1, month: 1, day: 1 }),
       navigation: createDefaultGridNavigationState(),

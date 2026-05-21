@@ -7,6 +7,7 @@ import { createEquipmentInstance, normalizeInventoryState } from "./equipment";
 import { createNewGame, getDefaultDodge, normalizePlayerState, normalizeStats } from "./state";
 
 export const SAVE_KEY = "xiuxian-text-rpg-save-slots-v1";
+export const SAVE_BACKUP_BEFORE_ZUSTAND_KEY = `${SAVE_KEY}-backup-before-zustand`;
 
 const defaultSettings: SettingsState = {
   textSize: "normal",
@@ -20,7 +21,7 @@ const gradePreviewItemIdPrefix = "grade_preview_sword_";
 
 export function createEmptyRootSave(): RootSave {
   return {
-    version: 2,
+    version: 3,
     recentSlotId: null,
     settings: defaultSettings,
     slots: [null, null, null],
@@ -33,25 +34,47 @@ export function loadRootSave(): RootSave {
     if (!raw) {
       return createEmptyRootSave();
     }
-    const parsed = JSON.parse(raw) as RootSave;
-    if (![1, 2].includes(parsed.version) || !Array.isArray(parsed.slots)) {
-      return createEmptyRootSave();
-    }
-    const normalizedRoot = {
-      ...createEmptyRootSave(),
-      ...parsed,
-      version: 2 as const,
-      settings: { ...defaultSettings, ...parsed.settings },
-      slots: [normalizeSlot(parsed.slots[0]), normalizeSlot(parsed.slots[1]), normalizeSlot(parsed.slots[2])],
-    };
-    return shouldInjectGradePreviewEquipment() ? injectGradePreviewEquipment(normalizedRoot) : normalizedRoot;
+    return normalizeRootSave(JSON.parse(raw));
   } catch {
     return createEmptyRootSave();
   }
 }
 
+export function normalizeRootSave(input: unknown): RootSave {
+  const parsed = unwrapPersistedRootSave(input);
+  if (!isRootSaveLike(parsed)) {
+    return createEmptyRootSave();
+  }
+  const normalizedRoot = {
+    ...createEmptyRootSave(),
+    ...parsed,
+    version: 3 as const,
+    settings: { ...defaultSettings, ...parsed.settings },
+    slots: [normalizeSlot(parsed.slots[0]), normalizeSlot(parsed.slots[1]), normalizeSlot(parsed.slots[2])],
+  };
+  return shouldInjectGradePreviewEquipment() ? injectGradePreviewEquipment(normalizedRoot) : normalizedRoot;
+}
+
 export function persistRootSave(rootSave: RootSave): void {
   window.localStorage.setItem(SAVE_KEY, JSON.stringify(rootSave));
+}
+
+export function backupRawRootSaveBeforeZustand(raw: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (window.localStorage.getItem(SAVE_BACKUP_BEFORE_ZUSTAND_KEY)) {
+    return;
+  }
+  window.localStorage.setItem(SAVE_BACKUP_BEFORE_ZUSTAND_KEY, raw);
+}
+
+export function isPersistedRootSaveWrapper(input: unknown): boolean {
+  if (!input || typeof input !== "object") {
+    return false;
+  }
+  const state = "state" in input ? (input as { state?: unknown }).state : undefined;
+  return Boolean(state && typeof state === "object" && "rootSave" in state);
 }
 
 export function createSlot(slotIndex: number, name: string): SaveSlot {
@@ -111,7 +134,32 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
   };
 }
 
+function unwrapPersistedRootSave(input: unknown): unknown {
+  if (!input || typeof input !== "object") {
+    return input;
+  }
+  const state = "state" in input ? (input as { state?: unknown }).state : undefined;
+  if (state && typeof state === "object" && "rootSave" in state) {
+    return (state as { rootSave?: unknown }).rootSave;
+  }
+  if ("rootSave" in input) {
+    return (input as { rootSave?: unknown }).rootSave;
+  }
+  return input;
+}
+
+function isRootSaveLike(input: unknown): input is Partial<RootSave> & Pick<RootSave, "slots"> {
+  if (!input || typeof input !== "object") {
+    return false;
+  }
+  const root = input as Partial<RootSave>;
+  return [1, 2, 3].includes(Number(root.version)) && Array.isArray(root.slots);
+}
+
 function shouldInjectGradePreviewEquipment(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
   const search = window.location.search;
   if (!search) {
     return false;
@@ -164,12 +212,14 @@ function injectGradePreviewEquipment(rootSave: RootSave): RootSave {
     recentSlotId: nextSlot.id,
     slots: rootSave.slots.map((slot) => (slot?.id === nextSlot.id ? nextSlot : slot)),
   };
-  persistRootSave(nextRoot);
   clearGradePreviewQueryParam();
   return nextRoot;
 }
 
 function clearGradePreviewQueryParam(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
   const url = new URL(window.location.href);
   url.searchParams.delete(gradePreviewQueryParam);
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);

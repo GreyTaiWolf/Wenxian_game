@@ -18,7 +18,7 @@ export const worldProvinces: WorldProvince[] = [
     name: "中州",
     direction: "天下腹地",
     forces: ["青云宗", "天都仙盟", "散修坊市"],
-    description: "仙门与城池最密集的修行中心，青云城坐镇灵脉交汇之处。",
+    description: "仙门与城镇最密集的修行中心，青云镇坐镇灵脉交汇之处。",
     open: true,
     regionId: "central",
     marker: { x: 49, y: 39 },
