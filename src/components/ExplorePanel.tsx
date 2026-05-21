@@ -9,6 +9,7 @@ import {
   gridMaps,
 } from "../data/gridMaps";
 import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZones, gridDestinationZones } from "../data/gridMapZones";
+import { REGION_TILE_MOVE_DAYS, WORLD_TILE_MOVE_DAYS } from "../data/time";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
 import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type SceneAction, type SceneHotspot, type SceneNode } from "../data/world";
@@ -26,6 +27,7 @@ import {
   worldPositionToGridCoord,
 } from "../game/gridNavigation";
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
+import { advanceTime } from "../game/time";
 import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
 
@@ -90,7 +92,11 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
 
     const timer = window.setTimeout(() => {
       const [nextStep, ...remainingPath] = travel.path;
-      onChange((currentGame) => updateNavigationPosition(currentGame, travel.mapId, nextStep));
+      onChange((currentGame) => {
+        const movedGame = updateNavigationPosition(currentGame, travel.mapId, nextStep);
+        const stepDays = travel.mapId === WORLD_GRID_MAP_ID ? WORLD_TILE_MOVE_DAYS : REGION_TILE_MOVE_DAYS;
+        return advanceTime(movedGame, stepDays);
+      });
       setTravel({ ...travel, path: remainingPath });
     }, GRID_MOVEMENT_STEP_MS);
 

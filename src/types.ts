@@ -271,6 +271,11 @@ export interface WorldState {
   tasks: Record<string, QuestState>;
   logs: string[];
   sceneMessage: string;
+  calendar: {
+    year: number;
+    month: number;
+    day: number;
+  };
   navigation: GridNavigationState;
 }
 
