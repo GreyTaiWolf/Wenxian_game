@@ -2,6 +2,7 @@ import type { CombatActor, CombatState, GameState, RootSave, SaveSlot, SettingsS
 import { normalizeGridNavigationState } from "../data/gridMaps";
 import { itemGradeOrder, normalizeItemId } from "../data/items";
 import { normalizeCaveState } from "./cave";
+import { normalizeCalendarDate } from "./time";
 import { createEquipmentInstance, normalizeInventoryState } from "./equipment";
 import { createNewGame, getDefaultDodge, normalizePlayerState, normalizeStats } from "./state";
 
@@ -102,6 +103,7 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
       },
       world: {
         ...slot.game.world,
+        calendar: normalizeCalendarDate(slot.game.world?.calendar),
         navigation: normalizeGridNavigationState(slot.game.world?.navigation),
       },
       cave: normalizeCaveState(slot.game.cave),

@@ -556,3 +556,18 @@ agePenalty = Math.max(0, age / lifespan - 0.80) * 25;
 - 原因：为后续调参和内容扩展提供对照。
 - 影响范围：文档维护流程。
 - 验证方式：文档-only 改动，无需构建。
+
+
+## 时间推进与年龄增长（2026-05）
+
+- 历法常量：
+  - `CALENDAR_MONTHS_PER_YEAR = 12`
+  - `CALENDAR_DAYS_PER_MONTH = 30`
+  - `CALENDAR_DAYS_PER_WEEK = 7`
+- 移动耗时配置：
+  - 大世界每移动 1 格：`WORLD_TILE_MOVE_DAYS = 7`
+  - 州域每移动 1 格：`REGION_TILE_MOVE_DAYS = 1`
+- 年龄增长公式（按天累计）：
+  - `age += days / (12 * 30)`
+  - 显示保留两位小数。
+- 该年龄继续参与原有突破年龄惩罚（`age / lifespan`）计算，因此远行与寿元压力形成策略联动。
