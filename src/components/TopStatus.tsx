@@ -1,6 +1,6 @@
 import { getRealm } from "../data/progression";
 import { getEffectivePower } from "../game/equipment";
-import { formatCalendar } from "../game/time";
+import { formatCalendar, getTimeLabel } from "../game/time";
 import type { GameState } from "../types";
 import { GameIcon } from "./GameIcon";
 
@@ -36,6 +36,10 @@ export function TopStatus({ game, onExit }: { game: GameState; onExit: () => voi
         <span>
           <GameIcon name="module-explore" size={15} />
           {formatCalendar(game.world.calendar)}
+        </span>
+        <span>
+          <GameIcon name="combat-log" size={15} />
+          {`${getTimeLabel(game)} · ${game.world.time.weather}`}
         </span>
       </div>
       <div className="status-meter-grid">
