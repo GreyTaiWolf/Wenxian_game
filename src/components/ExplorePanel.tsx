@@ -28,6 +28,7 @@ import {
 } from "../game/gridNavigation";
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
 import { advanceTime } from "../game/time";
+import { rollTravelEvent } from "../game/travelEvents";
 import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
 
@@ -95,7 +96,11 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
       onChange((currentGame) => {
         const movedGame = updateNavigationPosition(currentGame, travel.mapId, nextStep);
         const stepDays = travel.mapId === WORLD_GRID_MAP_ID ? WORLD_TILE_MOVE_DAYS : REGION_TILE_MOVE_DAYS;
-        return advanceTime(movedGame, stepDays);
+        const timedGame = advanceTime(movedGame, stepDays);
+        const hitZone = findGridDestinationZone(travel.mapId, nextStep);
+        const eventRegionId = travel.mapId === WORLD_GRID_MAP_ID ? hitZone?.targetId ?? timedGame.world.regionId : timedGame.world.regionId;
+        const eventLocationId = travel.mapId === WORLD_GRID_MAP_ID ? undefined : hitZone?.targetId ?? timedGame.world.locationId;
+        return rollTravelEvent(timedGame, { mapLayer: travel.mapId === WORLD_GRID_MAP_ID ? "world" : "region", regionId: eventRegionId, locationId: eventLocationId });
       });
       setTravel({ ...travel, path: remainingPath });
     }, GRID_MOVEMENT_STEP_MS);

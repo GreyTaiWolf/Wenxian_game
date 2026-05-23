@@ -103,6 +103,7 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
       },
       world: {
         ...slot.game.world,
+        eventFlags: Array.isArray((slot.game.world as { eventFlags?: string[] })?.eventFlags) ? (slot.game.world as { eventFlags?: string[] }).eventFlags ?? [] : [],
         calendar: normalizeCalendarDate(slot.game.world?.calendar),
         navigation: normalizeGridNavigationState(slot.game.world?.navigation),
       },

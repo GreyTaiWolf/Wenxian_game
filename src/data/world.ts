@@ -44,6 +44,7 @@ export interface SceneNode {
 }
 
 export interface LocationNode {
+  eventPoolIds?: string[];
   id: string;
   name: string;
   type: "city" | "town" | "wild" | "secret";
@@ -52,6 +53,7 @@ export interface LocationNode {
 }
 
 export interface RegionNode {
+  eventPoolIds?: string[];
   id: string;
   name: string;
   locations: LocationNode[];
@@ -185,12 +187,14 @@ export const regions: RegionNode[] = [
   {
     id: "central",
     name: "中州",
+    eventPoolIds: ["central_spirit_stream"],
     locations: [
       {
         id: "qingyun_city",
         name: "青云城",
         type: "city",
         description: "中州东部的修士城池，坊市繁盛，青云宗在此设有接引处。",
+        eventPoolIds: ["central_spirit_stream"],
         scenes: [
           {
             id: "city_manor",
@@ -493,6 +497,7 @@ export const regions: RegionNode[] = [
   {
     id: "south_ridge",
     name: "南疆",
+    eventPoolIds: ["south_miasma_turbulence"],
     locations: [
       {
         id: "wuyao_alliance",
