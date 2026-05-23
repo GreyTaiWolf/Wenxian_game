@@ -1,6 +1,7 @@
-import { getRealm, isRealmStageAtLeast, majorRealmOrder } from "../data/progression";
+import { isRealmStageAtLeast } from "../data/progression";
 import { travelEvents, type EventMapLayer, type EventTimeWindow, type TravelEventConfig, type EventWeatherTag } from "../data/events";
 import { getWorldProvince } from "../data/worldMap";
+import { getLocation, getRegion } from "../data/world";
 import { appendLog, addRewards } from "./state";
 import type { GameState } from "../types";
 
@@ -11,14 +12,18 @@ interface TravelContext {
 }
 
 export function rollTravelEvent(game: GameState, context: TravelContext): GameState {
+  const poolWeight = getPoolWeightMap(game, context);
+  if (poolWeight.size === 0) {
+    return game;
+  }
   const weather = getWeatherTag(game);
   const timeWindow = getTimeWindow(game);
-  const candidates = travelEvents.filter((event) => isEventMatched(game, event, context, timeWindow, weather));
+  const candidates = travelEvents.filter((event) => poolWeight.has(event.id) && isEventMatched(game, event, context, timeWindow, weather));
   if (candidates.length === 0) {
     return game;
   }
 
-  const pickedEvent = weightedPick(candidates, (item) => item.baseWeight);
+  const pickedEvent = weightedPick(candidates, (item) => item.baseWeight * (poolWeight.get(item.id) ?? 1));
   if (!pickedEvent) {
     return game;
   }
@@ -62,15 +67,13 @@ function isEventMatched(
 
   const flags = new Set(game.world.eventFlags ?? []);
   if (event.requiredFlags?.some((flag) => !flags.has(flag))) return false;
-  if (event.blockedUntilFlags?.some((flag) => !flags.has(flag))) return true;
+  if (event.blockedUntilFlags?.every((flag) => flags.has(flag))) return false;
 
   if (event.minRealm && !isRealmStageAtLeast(game.player.realmId, event.minRealm.majorRealmId, event.minRealm.phaseId ?? "early")) {
     return false;
   }
 
-  const currentRealm = getRealm(game.player.realmId);
-  const realmGap = majorRealmOrder.indexOf(currentRealm.majorRealmId) - majorRealmOrder.indexOf("qi");
-  return realmGap >= -1;
+  return true;
 }
 
 function getTimeWindow(game: GameState): EventTimeWindow {
@@ -93,4 +96,25 @@ function weightedPick<T>(list: T[], getWeight: (item: T) => number): T | null {
     if (cursor <= 0) return item;
   }
   return list[list.length - 1] ?? null;
+}
+
+function getPoolWeightMap(game: GameState, context: TravelContext): Map<string, number> {
+  const pairs: Array<{ eventId: string; weight: number }> = [];
+  if (context.mapLayer === "world") {
+    const province = getWorldProvince(context.regionId);
+    pairs.push(...(province.eventPoolIds ?? []));
+  } else {
+    const region = getRegion(context.regionId);
+    const location = context.locationId ? getLocation(context.regionId, context.locationId) : null;
+    pairs.push(...(region.eventPoolIds ?? []), ...(location?.eventPoolIds ?? []));
+  }
+
+  const weights = new Map<string, number>();
+  pairs.forEach((item) => {
+    if (item.weight <= 0) {
+      return;
+    }
+    weights.set(item.eventId, (weights.get(item.eventId) ?? 0) + item.weight);
+  });
+  return weights;
 }

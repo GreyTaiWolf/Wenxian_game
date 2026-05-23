@@ -590,3 +590,5 @@ agePenalty = Math.max(0, age / lifespan - 0.80) * 25;
   - 南疆夜间“瘴潮翻涌”基础权重 10（分支 6/4，含灵石惩罚 12）。
   - 东海“海渊异象”未解锁占位权重 6；解锁后事件权重 5，最低境界筑基中期。
 - 事件奖励统一走 `addRewards`，事件文案统一走 `appendLog`。
+
+- 事件最终抽取权重 = 事件 `baseWeight` × 地图配置 `eventPoolIds.weight`（同事件多来源会累加）。

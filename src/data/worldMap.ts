@@ -1,5 +1,5 @@
 export interface WorldProvince {
-  eventPoolIds?: string[];
+  eventPoolIds?: Array<{ eventId: string; weight: number }>;
   id: string;
   name: string;
   direction: string;
@@ -22,7 +22,7 @@ export const worldProvinces: WorldProvince[] = [
     description: "仙门与城池最密集的修行中心，青云城坐镇灵脉交汇之处。",
     open: true,
     regionId: "central",
-    eventPoolIds: ["central_spirit_stream"],
+    eventPoolIds: [{ eventId: "central_spirit_stream", weight: 8 }],
     marker: { x: 49, y: 39 },
   },
   {
@@ -32,7 +32,10 @@ export const worldProvinces: WorldProvince[] = [
     forces: ["蓬莱仙岛", "碧海龙宫", "归墟散修"],
     description: "海岛、仙舟与水府交错的灵潮之地，传闻归墟深处有古修残碑。",
     open: false,
-    eventPoolIds: ["east_sea_anomaly_locked", "east_sea_anomaly"],
+    eventPoolIds: [
+      { eventId: "east_sea_anomaly_locked", weight: 12 },
+      { eventId: "east_sea_anomaly", weight: 5 },
+    ],
     marker: { x: 82, y: 38 },
   },
   {
@@ -52,7 +55,7 @@ export const worldProvinces: WorldProvince[] = [
     description: "巫妖盟统御南疆诸部，木灵宗掌草木灵脉，百草谷产灵药，潮汐海市通海岛交易。",
     open: true,
     regionId: "south_ridge",
-    eventPoolIds: ["south_miasma_turbulence"],
+    eventPoolIds: [{ eventId: "south_miasma_turbulence", weight: 7 }],
     marker: { x: 48, y: 74 },
   },
   {
