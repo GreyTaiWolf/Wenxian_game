@@ -31,6 +31,16 @@ export interface SceneHotspot {
   x: number;
   y: number;
   text: string;
+  type?: "npc" | "shop" | "portal" | "action";
+  dialogueActions?: {
+    id: string;
+    label: string;
+    kind: "chat" | "spar" | "shop" | "quest" | "gift";
+    description?: string;
+    text?: string;
+    shopId?: string;
+    disabled?: boolean;
+  }[];
 }
 
 export interface LocationSceneHotspot {
@@ -80,6 +90,18 @@ export interface ShopItem {
   itemId: string;
   price: number;
   regionId?: string;
+  stock?: number;
+}
+
+export type ShopRefreshInterval = "monthly" | "seasonal" | "none";
+
+export interface ShopConfig {
+  id: string;
+  name: string;
+  ownerName?: string;
+  description: string;
+  refreshInterval: ShopRefreshInterval;
+  items: ShopItem[];
 }
 
 export interface TaskConfig {
@@ -98,16 +120,184 @@ export interface TaskConfig {
   };
 }
 
-export const shopItems: ShopItem[] = [
-  { itemId: "healing_powder", price: 55 },
-  { itemId: "qi_pill", price: 144 },
-  { itemId: "low_sword", price: 396 },
-  { itemId: "foundation_pill", price: 2640 },
-  { itemId: "miasma_flower", price: 288, regionId: "south_ridge" },
-  { itemId: "tide_shell", price: 320, regionId: "south_ridge" },
-  { itemId: "demon_core_shard", price: 480, regionId: "south_ridge" },
-  { itemId: "greenwood_essence", price: 880, regionId: "south_ridge" },
+export const sceneNpcHotspots = {
+  qing_yu: {
+    id: "qing_yu",
+    label: "清雨",
+    title: "小小仙铺掌柜",
+    type: "npc",
+    x: 63.5,
+    y: 31,
+    text: "清雨把手中的玉简合上，笑道：小店东西杂，回春散、聚气丹、低阶法器和符纸都有。初来青云镇，先把保命的备齐。",
+    dialogueActions: [
+      {
+        id: "qing_yu_chat",
+        label: "聊天",
+        kind: "chat",
+        description: "问问仙铺近况",
+        text: "清雨轻点货架：最近黑风山那边不太平，回春散走得快。你若刚开始历练，丹药、法剑和几张护身符都别省。",
+      },
+      {
+        id: "qing_yu_spar",
+        label: "切磋",
+        kind: "spar",
+        description: "暂作对话预留",
+        text: "清雨掩袖一笑：店里瓶瓶罐罐多，真动手可赔不起。等后院清出来，我再看看你的身法。",
+      },
+      {
+        id: "qing_yu_buy",
+        label: "购买",
+        kind: "shop",
+        description: "前期杂货 / 丹药 / 法器",
+        shopId: "xiaoxiao_shop",
+        text: "清雨侧身让出货架：前期常用的东西都在这儿，丹药、法器和杂货先看需要拿。",
+      },
+    ],
+  },
+  su_da: {
+    id: "su_da",
+    label: "苏达",
+    title: "草药铺小童",
+    type: "npc",
+    x: 33.5,
+    y: 47,
+    text: "苏达把药杵放下，认真看了看你：客人若是要买灵草、灵植或丹药，可以先问我。师父正在后柜配药。",
+    dialogueActions: [
+      {
+        id: "su_da_chat",
+        label: "聊天",
+        kind: "chat",
+        description: "问问铺中近况",
+        text: "苏达压低声音：今日新到一批凝气草，叶尖还带露。若你常去灵药谷，师父也收新鲜灵草。",
+      },
+      {
+        id: "su_da_spar",
+        label: "切磋",
+        kind: "spar",
+        description: "暂作对话预留",
+        text: "苏达连忙摆手：我只会认药、捣药，真要切磋，等我先把这炉回春散看住。",
+      },
+      {
+        id: "su_da_buy",
+        label: "购买",
+        kind: "shop",
+        description: "灵草 / 灵植 / 丹药",
+        shopId: "li_baicao_herbs",
+        text: "苏达指向右侧药柜：灵草、灵植、回春散都在柜上。若要贵重丹药，得等师父亲自取货。",
+      },
+    ],
+  },
+} satisfies Record<string, SceneHotspot>;
+
+export const defaultShopConfigId = "qingyun_general_market";
+
+export const shopConfigs: ShopConfig[] = [
+  {
+    id: defaultShopConfigId,
+    name: "青云坊市",
+    description: "青云镇散修最常去的坊市摊位，常备基础丹药和低阶法器。",
+    refreshInterval: "monthly",
+    items: [
+      { itemId: "healing_powder", price: 55, stock: 6 },
+      { itemId: "qi_pill", price: 144, stock: 4 },
+      { itemId: "low_sword", price: 396, stock: 1 },
+      { itemId: "foundation_pill", price: 2640, stock: 1 },
+    ],
+  },
+  {
+    id: "xiaoxiao_shop",
+    name: "小小仙铺",
+    ownerName: "清雨",
+    description: "前期杂货、丹药和低阶法器都能在这里补齐，适合出镇历练前备货。",
+    refreshInterval: "monthly",
+    items: [
+      { itemId: "healing_powder", price: 55, stock: 6 },
+      { itemId: "qi_pill", price: 144, stock: 4 },
+      { itemId: "low_sword", price: 396, stock: 1 },
+      { itemId: "foundation_pill", price: 2640, stock: 1 },
+    ],
+  },
+  {
+    id: "li_baicao_herbs",
+    name: "李百草草药铺",
+    ownerName: "苏达",
+    description: "草药铺主售灵草、灵植种子和基础丹药，库存每月随采药队归来刷新。",
+    refreshInterval: "monthly",
+    items: [
+      { itemId: "spirit_herb", price: 30, stock: 12 },
+      { itemId: "qi_grass", price: 60, stock: 6 },
+      { itemId: "spirit_grass_seed", price: 35, stock: 4 },
+      { itemId: "qi_grass_seed", price: 85, stock: 2 },
+      { itemId: "healing_powder", price: 55, stock: 5 },
+      { itemId: "qi_pill", price: 144, stock: 3 },
+      { itemId: "foundation_pill", price: 2640, stock: 1 },
+    ],
+  },
+  {
+    id: "zhao_refinery",
+    name: "赵家炼器铺",
+    description: "炼器铺库存以兵刃和基础防具为主，法器补货较慢。",
+    refreshInterval: "seasonal",
+    items: [
+      { itemId: "rough_iron_sword", price: 40, stock: 2 },
+      { itemId: "low_sword", price: 396, stock: 1 },
+    ],
+  },
+  {
+    id: "alliance_market",
+    name: "盟城坊市",
+    description: "南疆巫妖盟辖下的主城坊市，售卖南疆材料、丹药和低阶法器。",
+    refreshInterval: "seasonal",
+    items: [
+      { itemId: "healing_powder", price: 55, stock: 8, regionId: "south_ridge" },
+      { itemId: "qi_pill", price: 144, stock: 4, regionId: "south_ridge" },
+      { itemId: "low_sword", price: 396, stock: 1, regionId: "south_ridge" },
+      { itemId: "miasma_flower", price: 288, stock: 5, regionId: "south_ridge" },
+      { itemId: "tide_shell", price: 320, stock: 4, regionId: "south_ridge" },
+      { itemId: "demon_core_shard", price: 480, stock: 3, regionId: "south_ridge" },
+      { itemId: "greenwood_essence", price: 880, stock: 2, regionId: "south_ridge" },
+    ],
+  },
+  {
+    id: "spirit_wood_hall",
+    name: "灵木殿",
+    description: "木灵宗灵木殿售卖草木灵材、灵植种子和少量青木灵液。",
+    refreshInterval: "seasonal",
+    items: [
+      { itemId: "spirit_herb", price: 30, stock: 10, regionId: "south_ridge" },
+      { itemId: "qi_grass", price: 60, stock: 6, regionId: "south_ridge" },
+      { itemId: "spirit_grass_seed", price: 35, stock: 5, regionId: "south_ridge" },
+      { itemId: "qi_grass_seed", price: 85, stock: 3, regionId: "south_ridge" },
+      { itemId: "greenwood_vine_seed", price: 900, stock: 1, regionId: "south_ridge" },
+      { itemId: "greenwood_essence", price: 880, stock: 2, regionId: "south_ridge" },
+    ],
+  },
+  {
+    id: "tide_bazaar",
+    name: "潮汐坊市",
+    description: "海市随潮开摊，偏向潮汐材料、丹药和海岛灵物。",
+    refreshInterval: "monthly",
+    items: [
+      { itemId: "healing_powder", price: 55, stock: 6, regionId: "south_ridge" },
+      { itemId: "qi_pill", price: 144, stock: 4, regionId: "south_ridge" },
+      { itemId: "tide_shell", price: 320, stock: 6, regionId: "south_ridge" },
+      { itemId: "demon_core_shard", price: 480, stock: 2, regionId: "south_ridge" },
+    ],
+  },
 ];
+
+export const shopItems: ShopItem[] = shopConfigs.find((shop) => shop.id === defaultShopConfigId)?.items ?? [];
+
+export function getShopConfig(shopId: string | null | undefined, regionId = "central"): ShopConfig {
+  const configured = shopConfigs.find((shop) => shop.id === shopId);
+  if (configured) {
+    return configured;
+  }
+  if (regionId === "south_ridge") {
+    return shopConfigs.find((shop) => shop.id === "alliance_market") ?? shopConfigs[0];
+  }
+  return shopConfigs.find((shop) => shop.id === defaultShopConfigId) ?? shopConfigs[0];
+}
 
 export const tasks: TaskConfig[] = [
   {
@@ -245,7 +435,9 @@ export const regions: RegionNode[] = [
             id: "xiaoxiao_shop",
             name: "小小仙铺",
             type: "交易",
+            imageKey: "xiaoxiao_shop",
             description: "门脸不大，货架却塞满符纸、丹药、针线包和低阶修士最常用的杂物。",
+            hotspots: [sceneNpcHotspots.qing_yu],
             actions: [
               {
                 id: "open_xiaoxiao_shop",
@@ -281,6 +473,7 @@ export const regions: RegionNode[] = [
             type: "交易",
             imageKey: "li_baicao_herbs",
             description: "草药铺外晾着新采灵草，李百草熟知山间药性，也常收购凝气草。",
+            hotspots: [sceneNpcHotspots.su_da],
             actions: [{ id: "open_li_baicao_shop", label: "查看草药柜", kind: "shop" }],
           },
           {

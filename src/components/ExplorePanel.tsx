@@ -10,23 +10,25 @@ import {
 } from "../data/gridMaps";
 import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZones, gridDestinationZones } from "../data/gridMapZones";
 import { REGION_TILE_MOVE_DAYS, WORLD_TILE_MOVE_DAYS } from "../data/time";
-import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
+import { formatItemName, shouldEmphasizeItemGrade } from "../data/items";
 import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
 import {
   getLocation,
   getRegion,
   getScene,
-  shopItems,
+  getShopConfig,
   tasks,
   type LocationNode,
   type LocationSceneBlockedRect,
   type LocationSceneHotspot,
   type SceneAction,
   type SceneNode,
+  type ShopConfig,
 } from "../data/world";
 import { getWorldProvince, worldProvinces, type WorldProvince } from "../data/worldMap";
 import { getSceneImage, mapImages, regionMapImages } from "../data/assets";
 import { beginCombat, grantGatherReward, grantTreasure } from "../game/combatEngine";
+import { dismissActiveWorldEvent, getActiveWorldEvent, maybeTriggerMapEvent, resolveWorldEventChoice } from "../game/events";
 import {
   findNearestWalkableCell,
   findPathAStar,
@@ -39,12 +41,14 @@ import {
   worldPositionToGridCoord,
 } from "../game/gridNavigation";
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
+import { buyShopItem, getShopDisplayItems, getShopRefreshInfo } from "../game/shop";
 import { advanceTime } from "../game/time";
 import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
 import { useActiveGame, useSettings, useUpdateGame } from "../stores/gameStore";
 import { defaultMapViewport, useMapUiStore, type ActiveTravel, type LocationTravelIntent, type TravelIntent } from "../stores/mapUiStore";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
-import { NpcDialogueSheet, SceneHotspot, SceneView } from "./scene";
+import { NpcDialogueSheet, SceneHotspot, SceneView, type SceneHotspotDialogueAction, type SceneHotspotModel } from "./scene";
+import { BottomSheet, GradeBadge } from "./ui";
 
 const GRID_MOVEMENT_STEP_MS = 180;
 const LOCATION_SCENE_GRID_WIDTH = 42;
@@ -71,6 +75,7 @@ export default function ExplorePanel() {
   const toggleDebug = useMapUiStore((state) => state.toggleDebug);
   const setDebugResult = useMapUiStore((state) => state.setDebugResult);
   const setTravel = useMapUiStore((state) => state.setTravel);
+  const [activeShopId, setActiveShopId] = useState<string | null>(null);
 
   if (!activeGame) {
     return null;
@@ -225,9 +230,21 @@ export default function ExplorePanel() {
     });
   }
 
-  function openSceneHotspot(hotspot: { id: string; label?: string; text?: string }) {
+  function openSceneHotspot(hotspot: SceneHotspotModel) {
     setActiveSceneHotspotId(hotspot.id);
     onChange((currentGame) => appendLog(currentGame, `${hotspot.label ?? "场景"}：${hotspot.text ?? "你略作停留。"}`));
+  }
+
+  function handleSceneHotspotAction(action: SceneHotspotDialogueAction, hotspot: SceneHotspotModel) {
+    if (action.kind === "shop") {
+      const shopId = action.shopId ?? game.world.sceneId;
+      setActiveSceneHotspotId(null);
+      setActiveShopId(shopId);
+      onChange((currentGame) => appendLog(currentGame, `${hotspot.label}为你打开货柜。`));
+      return;
+    }
+    const fallback = "对方似乎还在斟酌。";
+    onChange((currentGame) => appendLog(currentGame, `${hotspot.label} · ${action.label}：${action.text ?? fallback}`));
   }
 
   function completeTravel(doneTravel: ActiveTravel) {
@@ -241,9 +258,12 @@ export default function ExplorePanel() {
         setSelectedRegionMarkerId(null);
         setView("world");
         onChange((currentGame) =>
-          appendLog(
+          applyArrivalEvent(
+            appendLog(
             updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
             `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${province.name}地界，已展开州域信息。`,
+          ),
+            doneTravel,
           ),
         );
       }
@@ -253,7 +273,7 @@ export default function ExplorePanel() {
     if (doneTravel.intent.kind === "location") {
       const locationId = doneTravel.intent.locationId;
       setView("location");
-      onChange((currentGame) => applyLocationChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), locationId));
+      onChange((currentGame) => applyArrivalEvent(applyLocationChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), locationId), doneTravel));
       return;
     }
 
@@ -262,9 +282,12 @@ export default function ExplorePanel() {
       setSelectedRegionMarkerId(targetLocation.id);
       setView("region");
       onChange((currentGame) =>
-        appendLog(
+        applyArrivalEvent(
+          appendLog(
           updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
           `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${targetLocation.name}周边，已展开地点信息。`,
+        ),
+          doneTravel,
         ),
       );
       return;
@@ -276,9 +299,12 @@ export default function ExplorePanel() {
         setSelectedProvinceId(province.id);
         setView("world");
         onChange((currentGame) =>
-          appendLog(
+          applyArrivalEvent(
+            appendLog(
             updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
             `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${province.name}地界，已展开州域信息。`,
+          ),
+            doneTravel,
           ),
         );
         return;
@@ -292,9 +318,12 @@ export default function ExplorePanel() {
         setSelectedRegionMarkerId(targetLocation.id);
         setView("region");
         onChange((currentGame) =>
-          appendLog(
+          applyArrivalEvent(
+            appendLog(
             updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
             `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${targetLocation.name}周边，已展开地点信息。`,
+          ),
+            doneTravel,
           ),
         );
         return;
@@ -302,9 +331,12 @@ export default function ExplorePanel() {
     }
 
     onChange((currentGame) =>
-      appendLog(
+      applyArrivalEvent(
+        appendLog(
         updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
         doneTravel.adjusted ? "目标落在险阻处，你已抵达附近最近的可走格。" : "你沿着灵路抵达目标格。",
+      ),
+        doneTravel,
       ),
     );
   }
@@ -449,7 +481,7 @@ export default function ExplorePanel() {
           )}
 
           {!(locationSceneMapImage && location.sceneMapHotspots) && scene.actions.some((action) => action.kind === "shop") ? (
-            <Shop game={game} onChange={onChange} />
+            <Shop game={game} onChange={onChange} shopId={scene.id} />
           ) : null}
           {!(locationSceneMapImage && location.sceneMapHotspots) && scene.actions.some((action) => action.kind === "taskBoard") ? (
             <TaskBoard game={game} onChange={onChange} />
@@ -458,15 +490,69 @@ export default function ExplorePanel() {
             open={Boolean(activeSceneHotspot)}
             hotspot={activeSceneHotspot}
             motionEnabled={settings.motion}
+            onAction={handleSceneHotspotAction}
             onOpenChange={(open) => {
               if (!open) {
                 setActiveSceneHotspotId(null);
               }
             }}
           />
+          <ShopCatalogSheet
+            game={game}
+            motionEnabled={settings.motion}
+            onChange={onChange}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActiveShopId(null);
+              }
+            }}
+            open={Boolean(activeShopId)}
+            shopId={activeShopId}
+          />
         </>
       )}
+      <MapEventSheet game={game} motionEnabled={settings.motion} onChange={onChange} />
     </section>
+  );
+}
+
+function MapEventSheet({
+  game,
+  motionEnabled,
+  onChange,
+}: {
+  game: GameState;
+  motionEnabled: boolean;
+  onChange: ExploreChange;
+}) {
+  const event = getActiveWorldEvent(game);
+  return (
+    <BottomSheet
+      open={Boolean(event)}
+      onOpenChange={(open) => {
+        if (!open) {
+          onChange(dismissActiveWorldEvent(game));
+        }
+      }}
+      title={event?.title ?? "玄幻事件"}
+      subtitle={event ? getEventTypeLabel(event.type) : undefined}
+      motionEnabled={motionEnabled}
+      className="map-event-sheet"
+    >
+      {event ? (
+        <div className="map-event-content">
+          <p>{event.description}</p>
+          <div className="map-event-choice-list">
+            {event.choices.map((choice) => (
+              <button className={choice.kind === "combat" ? "ghost-button danger" : "ghost-button"} type="button" key={choice.id} onClick={() => onChange(resolveWorldEventChoice(game, choice.id))}>
+                <GameIcon name={getEventChoiceIcon(choice.kind)} size={15} />
+                <span>{choice.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </BottomSheet>
   );
 }
 
@@ -486,7 +572,7 @@ function LocationSceneImageMap({
   imageSrc: string;
   location: LocationNode;
   onChange: ExploreChange;
-  onSceneHotspotSelect: (hotspot: { id: string; label?: string; text?: string }) => void;
+  onSceneHotspotSelect: (hotspot: SceneHotspotModel) => void;
   onSelectScene: (sceneId: string) => void;
 }) {
   const mapId = `scene:${location.id}`;
@@ -558,11 +644,9 @@ function LocationSceneImageMap({
   if (detailMapOpen && currentSceneImage) {
     return (
       <SceneDetailImageMap
-        game={game}
         imageSrc={currentSceneImage}
         location={location}
         onBack={() => setDetailMapOpen(false)}
-        onChange={onChange}
         onSceneHotspotSelect={onSceneHotspotSelect}
         scene={currentScene}
       />
@@ -683,7 +767,7 @@ function LocationSceneImageMap({
               </div>
             ) : null}
             <SceneActionButtons actions={currentScene.actions} game={game} onChange={onChange} />
-            {hasShop ? <Shop game={game} onChange={onChange} /> : null}
+            {hasShop ? <Shop game={game} onChange={onChange} shopId={currentScene.id} /> : null}
             {hasTaskBoard ? <TaskBoard game={game} onChange={onChange} /> : null}
           </section>
         ) : null}
@@ -693,20 +777,16 @@ function LocationSceneImageMap({
 }
 
 function SceneDetailImageMap({
-  game,
   imageSrc,
   location,
   onBack,
-  onChange,
   onSceneHotspotSelect,
   scene,
 }: {
-  game: GameState;
   imageSrc: string;
   location: LocationNode;
   onBack: () => void;
-  onChange: ExploreChange;
-  onSceneHotspotSelect: (hotspot: { id: string; label?: string; text?: string }) => void;
+  onSceneHotspotSelect: (hotspot: SceneHotspotModel) => void;
   scene: SceneNode;
 }) {
   const mapId = `scene-detail:${location.id}:${scene.id}`;
@@ -718,8 +798,6 @@ function SceneDetailImageMap({
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const scale = viewport.scale;
   const offset = clampSceneImageMapOffset(viewport.offset, scale, viewportSize, SCENE_DETAIL_MAP_ASPECT_RATIO);
-  const hasShop = scene.actions.some((action) => action.kind === "shop");
-  const hasTaskBoard = scene.actions.some((action) => action.kind === "taskBoard");
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -834,21 +912,6 @@ function SceneDetailImageMap({
             <SceneHotspot key={hotspot.id} hotspot={hotspot} onSelect={onSceneHotspotSelect} />
           ))}
         </div>
-
-        <section className="world-info-drawer location-scene-drawer scene-detail-map-drawer" onPointerDown={(event) => event.stopPropagation()}>
-          <div className="section-heading">
-            <h2>
-              <GameIcon name={getSceneIconName(scene.type)} size={18} />
-              {scene.name}
-            </h2>
-            <span>{scene.type}</span>
-          </div>
-          <p>{scene.description}</p>
-          {game.world.sceneMessage ? <p className="scene-message">{game.world.sceneMessage}</p> : null}
-          <SceneActionButtons actions={scene.actions} game={game} onChange={onChange} />
-          {hasShop ? <Shop game={game} onChange={onChange} /> : null}
-          {hasTaskBoard ? <TaskBoard game={game} onChange={onChange} /> : null}
-        </section>
       </div>
     </div>
   );
@@ -1513,6 +1576,10 @@ function updateNavigationPosition(game: GameState, mapId: string, coord: GridCoo
   };
 }
 
+function applyArrivalEvent(game: GameState, travel: ActiveTravel): GameState {
+  return maybeTriggerMapEvent(game, { mapId: travel.mapId, coord: travel.target });
+}
+
 function getRegionIdFromGridMapId(mapId: string): string | null {
   return mapId.startsWith("region:") ? mapId.slice("region:".length) : null;
 }
@@ -1649,6 +1716,38 @@ function getActionIconName(kind: SceneAction["kind"]): GameIconName {
   return "module-explore";
 }
 
+function getEventTypeLabel(type: string): string {
+  if (type === "combat") {
+    return "战斗事件";
+  }
+  if (type === "field") {
+    return "灵田事件";
+  }
+  if (type === "weather") {
+    return "天象事件";
+  }
+  if (type === "treasure") {
+    return "机缘事件";
+  }
+  if (type === "quest") {
+    return "任务事件";
+  }
+  return "对话事件";
+}
+
+function getEventChoiceIcon(kind: string): GameIconName {
+  if (kind === "combat") {
+    return "combat";
+  }
+  if (kind === "field" || kind === "reward") {
+    return "system-spirit-field";
+  }
+  if (kind === "weather") {
+    return "module-explore";
+  }
+  return "combat-log";
+}
+
 function handleAction(game: GameState, action: SceneAction): GameState {
   if (action.kind === "dialogue") {
     const visitedLuoxia = game.world.locationId === "luoxia_town";
@@ -1698,49 +1797,100 @@ function handleAction(game: GameState, action: SceneAction): GameState {
   return game;
 }
 
-function Shop({ game, onChange }: { game: GameState; onChange: ExploreChange }) {
-  const visibleShopItems = shopItems.filter((shopItem) => !shopItem.regionId || shopItem.regionId === game.world.regionId);
-
-  function buy(itemId: string, price: number) {
-    if (game.player.spiritStones < price) {
-      onChange(appendLog(game, "灵石不足，摊主只是笑而不语。"));
-      return;
-    }
-    const bought = addItems(
-      {
-        ...game,
-        player: {
-          ...game.player,
-          spiritStones: game.player.spiritStones - price,
-        },
-      },
-      [{ itemId, amount: 1 }],
-    );
-    onChange(appendLog(bought, `购得 ${formatItemName(itemId)} x1。`));
-  }
-
+function Shop({ game, onChange, shopId }: { game: GameState; onChange: ExploreChange; shopId?: string }) {
+  const shop = getShopConfig(shopId, game.world.regionId);
+  const refresh = getShopRefreshInfo(shop, game.world.calendar);
   return (
     <section className="shop-list">
       <div className="section-heading">
         <h2>
           <GameIcon name="location-town" size={18} />
-          坊市摊位
+          {shop.name}
         </h2>
         <span>灵石 {game.player.spiritStones}</span>
       </div>
-      {visibleShopItems.map((shopItem) => {
-        const item = getItem(shopItem.itemId);
+      <p className="shop-refresh-note">
+        {refresh.label}
+        {refresh.remainingDays !== null ? ` · ${refresh.remainingDays}天后补货` : ""}
+      </p>
+      <ShopItemList game={game} onChange={onChange} shop={shop} />
+    </section>
+  );
+}
+
+function ShopCatalogSheet({
+  game,
+  motionEnabled,
+  onChange,
+  onOpenChange,
+  open,
+  shopId,
+}: {
+  game: GameState;
+  motionEnabled: boolean;
+  onChange: ExploreChange;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  shopId: string | null;
+}) {
+  const shop = getShopConfig(shopId, game.world.regionId);
+  const refresh = getShopRefreshInfo(shop, game.world.calendar);
+
+  return (
+    <BottomSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={shop.name}
+      subtitle={shop.ownerName ? `${shop.ownerName} · ${refresh.label}` : refresh.label}
+      motionEnabled={motionEnabled}
+      className="shop-catalog-sheet"
+    >
+      <div className="shop-catalog">
+        <section className="shop-catalog-summary">
+          <div>
+            <h3>{shop.description}</h3>
+            <p>
+              当前灵石：<strong>{game.player.spiritStones}</strong>
+            </p>
+          </div>
+          <span>{refresh.remainingDays !== null ? `${refresh.remainingDays}天后补货` : "固定库存"}</span>
+        </section>
+        <ShopItemList game={game} onChange={onChange} shop={shop} large />
+      </div>
+    </BottomSheet>
+  );
+}
+
+function ShopItemList({ game, large = false, onChange, shop }: { game: GameState; large?: boolean; onChange: ExploreChange; shop: ShopConfig }) {
+  const displayItems = getShopDisplayItems(game, shop);
+
+  function buy(itemId: string) {
+    onChange((currentGame) => buyShopItem(currentGame, shop.id, itemId));
+  }
+
+  return (
+    <div className={large ? "shop-catalog-grid" : "shop-inline-list"}>
+      {displayItems.map(({ item, remaining, shopItem, soldOut }) => {
+        const stockText = remaining === null ? "不限" : `${remaining}/${shopItem.stock}`;
+        const canBuy = !soldOut && game.player.spiritStones >= shopItem.price;
         return (
-          <div className={`item-row grade-card grade-${item.grade}`} key={shopItem.itemId}>
-            <div>
-              <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
+          <div className={`item-row shop-item-row grade-card grade-${item.grade}${soldOut ? " sold-out" : ""}`} key={shopItem.itemId}>
+            <div className="shop-item-main">
+              <div className="shop-item-title">
+                <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
+                <GradeBadge compact grade={item.grade} />
+              </div>
               <small>{item.description}</small>
+              <span>库存 {stockText}</span>
             </div>
-            <button onClick={() => buy(shopItem.itemId, shopItem.price)}>{shopItem.price} 灵石</button>
+            <button disabled={!canBuy} onClick={() => buy(shopItem.itemId)}>
+              {soldOut ? "售罄" : `${shopItem.price} 灵石`}
+            </button>
           </div>
         );
       })}
-    </section>
+      {displayItems.length === 0 ? <p className="shop-refresh-note">此地暂时没有适合当前州域的货物。</p> : null}
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { caveBaseCultivationPerMinute, getNextSpiritArrayConfig, getSpiritArrayConfig } from "../data/cave";
 import { getRealm } from "../data/progression";
 import type { CaveState, GameState } from "../types";
+import { normalizeSpiritFieldState } from "./spiritField";
 import { appendLog, canAffordCost, createDefaultCaveState, describeCost, spendCost } from "./state";
 
 export interface MeditationPreview {
@@ -23,6 +24,7 @@ export function normalizeCaveState(cave: Partial<CaveState> | undefined): CaveSt
     meditationStartedAt: typeof cave?.meditationStartedAt === "string" ? cave.meditationStartedAt : defaults.meditationStartedAt,
     spiritArrayLevel: normalizeSpiritArrayLevel(cave?.spiritArrayLevel),
     totalMeditationMinutes: normalizeNonNegativeInteger(cave?.totalMeditationMinutes),
+    spiritField: normalizeSpiritFieldState(cave?.spiritField),
   };
 }
 

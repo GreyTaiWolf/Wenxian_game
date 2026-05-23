@@ -43,10 +43,10 @@ export const realms: RealmConfig[] = [
     phaseId: "early",
     requiredCultivation: 120,
     baseStats: { maxHp: 220, maxSpirit: 48, attack: 34, defense: 18, spiritSense: 0, speed: 18, dodgeRate: 0.02, critRate: 0.05, critDamage: 1.5 },
-    lifespan: 120,
+    lifespan: 200,
     breakthroughCost: {},
     successRate: 1,
-    unlocks: ["cultivation", "inventory", "explore"],
+    unlocks: ["cultivation", "inventory", "explore", "cave"],
   },
   {
     id: "qi_middle",
@@ -55,10 +55,10 @@ export const realms: RealmConfig[] = [
     phaseId: "middle",
     requiredCultivation: 320,
     baseStats: { maxHp: 310, maxSpirit: 72, attack: 47, defense: 25, spiritSense: 0, speed: 21, dodgeRate: 0.022, critRate: 0.055, critDamage: 1.5 },
-    lifespan: 130,
+    lifespan: 400,
     breakthroughCost: { spiritStones: 80 },
     successRate: 0.92,
-    unlocks: ["cultivation", "inventory", "explore"],
+    unlocks: ["cultivation", "inventory", "explore", "cave"],
   },
   {
     id: "qi_late",
@@ -67,13 +67,13 @@ export const realms: RealmConfig[] = [
     phaseId: "late",
     requiredCultivation: 850,
     baseStats: { maxHp: 420, maxSpirit: 105, attack: 62, defense: 33, spiritSense: 0, speed: 24, dodgeRate: 0.024, critRate: 0.06, critDamage: 1.5 },
-    lifespan: 140,
+    lifespan: 600,
     breakthroughCost: {
       spiritStones: 180,
       items: [{ itemId: "qi_grass", amount: 2 }],
     },
     successRate: 0.88,
-    unlocks: ["cultivation", "inventory", "explore", "foundationSkills"],
+    unlocks: ["cultivation", "inventory", "explore", "cave", "foundationSkills"],
   },
   {
     id: "qi_peak",
@@ -82,13 +82,13 @@ export const realms: RealmConfig[] = [
     phaseId: "peak",
     requiredCultivation: 1800,
     baseStats: { maxHp: 560, maxSpirit: 150, attack: 80, defense: 42, spiritSense: 0, speed: 28, dodgeRate: 0.026, critRate: 0.065, critDamage: 1.5 },
-    lifespan: 150,
+    lifespan: 800,
     breakthroughCost: {
       spiritStones: 360,
       items: [{ itemId: "foundation_pill", amount: 1 }],
     },
     successRate: 0.82,
-    unlocks: ["cultivation", "inventory", "explore", "foundationSkills", "pet"],
+    unlocks: ["cultivation", "inventory", "explore", "cave", "foundationSkills", "pet"],
   },
   {
     id: "foundation_early",
@@ -97,7 +97,7 @@ export const realms: RealmConfig[] = [
     phaseId: "early",
     requiredCultivation: 4200,
     baseStats: { maxHp: 820, maxSpirit: 250, attack: 116, defense: 60, spiritSense: 0, speed: 33, dodgeRate: 0.028, critRate: 0.07, critDamage: 1.5 },
-    lifespan: 220,
+    lifespan: 2200,
     breakthroughCost: {},
     successRate: 0.38,
     unlocks: ["cultivation", "inventory", "explore", "foundationSkills", "pet", "cave"],
@@ -109,7 +109,7 @@ export const realms: RealmConfig[] = [
     phaseId: "middle",
     requiredCultivation: 9600,
     baseStats: { maxHp: 1120, maxSpirit: 360, attack: 154, defense: 79, spiritSense: 0, speed: 38, dodgeRate: 0.03, critRate: 0.075, critDamage: 1.5 },
-    lifespan: 240,
+    lifespan: 2400,
     breakthroughCost: {
       spiritStones: 900,
       items: [{ itemId: "beast_bone", amount: 4 }],
@@ -124,7 +124,7 @@ export const realms: RealmConfig[] = [
     phaseId: "late",
     requiredCultivation: 22000,
     baseStats: { maxHp: 1480, maxSpirit: 500, attack: 198, defense: 99, spiritSense: 0, speed: 43, dodgeRate: 0.032, critRate: 0.08, critDamage: 1.5 },
-    lifespan: 270,
+    lifespan: 2700,
     breakthroughCost: {
       spiritStones: 1800,
       items: [{ itemId: "greenwood_essence", amount: 2 }],
@@ -139,7 +139,7 @@ export const realms: RealmConfig[] = [
     phaseId: "peak",
     requiredCultivation: 50000,
     baseStats: { maxHp: 1900, maxSpirit: 680, attack: 248, defense: 124, spiritSense: 0, speed: 49, dodgeRate: 0.034, critRate: 0.085, critDamage: 1.5 },
-    lifespan: 300,
+    lifespan: 3000,
     breakthroughCost: {
       spiritStones: 3600,
       items: [

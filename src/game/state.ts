@@ -1,8 +1,9 @@
 import { formatItemName, getItem, normalizeItemId } from "../data/items";
 import { getNextRealm, getRealm } from "../data/progression";
 import { createDefaultGridNavigationState } from "../data/gridMaps";
+import { createDefaultSpiritFieldState } from "../data/spiritPlants";
 import { createEquipmentInstance } from "./equipment";
-import { normalizeCalendarDate } from "./time";
+import { createDefaultWeatherState, normalizeCalendarDate, normalizeWorldEventState } from "./time";
 import type { ActorKind, CaveState, CombatLoadout, Cost, GameState, ItemAmount, PlayerState, Stats, TeamMember, UnlockKey } from "../types";
 
 export const starterStats: Stats = {
@@ -62,6 +63,7 @@ export function createDefaultCaveState(): CaveState {
     meditationStartedAt: null,
     spiritArrayLevel: 0,
     totalMeditationMinutes: 0,
+    spiritField: createDefaultSpiritFieldState(),
   };
 }
 
@@ -94,7 +96,8 @@ export function normalizePlayerState(player: Partial<PlayerState> | undefined): 
   const stats = normalizeStats(player?.stats, realm.baseStats);
   const skillIds = player?.skillIds ?? ["basic_strike", "qi_slash", "rejuvenation"];
   const age = safeNumber(player?.age, safeNumber(player?.lifespanCurrent, 18));
-  const lifespan = safeNumber(player?.lifespan, safeNumber(player?.lifespanMax, realm.lifespan));
+  const lifespan = Math.max(realm.lifespan, safeNumber(player?.lifespan, safeNumber(player?.lifespanMax, realm.lifespan)));
+  const unlocks = Array.from(new Set<UnlockKey>([...(player?.unlocks ?? realm.unlocks), "cave"]));
   return {
     name: player?.name || "无名散修",
     realmId: realm.id,
@@ -115,7 +118,7 @@ export function normalizePlayerState(player: Partial<PlayerState> | undefined): 
       ...member,
       stats: normalizeStats(member.stats, { ...starterStats, dodgeRate: getDefaultDodge(member.kind) }),
     })),
-    unlocks: player?.unlocks ?? realm.unlocks,
+    unlocks,
     dailyCultivationCount: Math.max(0, Math.floor(safeNumber(player?.dailyCultivationCount, 0))),
   };
 }
@@ -176,7 +179,7 @@ export function createNewGame(name: string): GameState {
       skillIds: ["basic_strike", "qi_slash", "rejuvenation"],
       combatLoadout: defaultCombatLoadout,
       team: [],
-      unlocks: ["cultivation", "inventory", "explore"],
+      unlocks: ["cultivation", "inventory", "explore", "cave"],
       dailyCultivationCount: 0,
     },
     inventory: {
@@ -209,6 +212,9 @@ export function createNewGame(name: string): GameState {
       logs: ["你在青云镇外醒来，远处钟声如水，仙途由此开始。"],
       sceneMessage: "选择城中地点，或先去修炼聚气。",
       calendar: normalizeCalendarDate({ year: 1, month: 1, day: 1 }),
+      weather: createDefaultWeatherState(0),
+      events: normalizeWorldEventState(undefined),
+      shops: {},
       navigation: createDefaultGridNavigationState(),
     },
     cave: createDefaultCaveState(),

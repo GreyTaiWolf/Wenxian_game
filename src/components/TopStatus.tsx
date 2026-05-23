@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { getRealm } from "../data/progression";
 import { getEffectivePower } from "../game/equipment";
-import { formatCalendar } from "../game/time";
+import { formatCalendar, formatRegionWeather } from "../game/time";
 import type { GameState } from "../types";
 import { GameIcon } from "./GameIcon";
 import { GameSettingsDialog } from "./GameSettingsDialog";
@@ -40,10 +40,13 @@ export function TopStatus({ game, onExit }: { game: GameState; onExit: () => voi
           <GameIcon name="module-explore" size={15} />
           {formatCalendar(game.world.calendar)}
         </span>
+        <span>
+          <GameIcon name="system-spirit-field" size={15} />
+          天气 {formatRegionWeather(game.world.weather, game.world.regionId)}
+        </span>
       </div>
       <div className="status-meter-grid">
         <StatusMeter icon="resource-life" label="寿元" value={Number(game.player.age.toFixed(2))} max={game.player.lifespan} tone="gold" />
-        <StatusMeter icon="resource-spirit" label="修为" value={game.player.cultivation} max={realm.requiredCultivation} tone="primary" />
       </div>
       <GameSettingsDialog game={game} open={settingsOpen} onOpenChange={setSettingsOpen} onExitToMenu={onExit} />
     </header>

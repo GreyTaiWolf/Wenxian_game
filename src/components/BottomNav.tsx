@@ -10,6 +10,9 @@ const navItems: Array<{ id: PrimaryModule; label: string; icon: GameIconName }> 
 ];
 
 export function isModuleUnlocked(game: GameState, moduleId: PrimaryModule): boolean {
+  if (moduleId === "cave") {
+    return true;
+  }
   if (moduleId === "sect") {
     return game.world.sectJoined || game.player.unlocks.includes("sect");
   }

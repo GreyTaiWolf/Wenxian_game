@@ -77,6 +77,46 @@ export interface Cost {
   items?: ItemAmount[];
 }
 
+export type SeasonId = "spring" | "summer" | "autumn" | "winter";
+
+export type WeatherId =
+  | "clear"
+  | "cloudy"
+  | "spirit_rain"
+  | "thunder_cloud"
+  | "miasma_rain"
+  | "snowstorm"
+  | "sandstorm"
+  | "tide_fog"
+  | "starfall"
+  | "spirit_tide";
+
+export interface CalendarState {
+  eraId: string;
+  eraName: string;
+  calendarName: string;
+  year: number;
+  month: number;
+  day: number;
+  dayIndex: number;
+  season: SeasonId;
+  solarTerm: string;
+}
+
+export interface WeatherSnapshot {
+  weatherId: WeatherId;
+  name: string;
+  description: string;
+  startedDayIndex: number;
+  untilDayIndex: number;
+}
+
+export interface WeatherState {
+  global: WeatherSnapshot;
+  regions: Record<string, WeatherSnapshot>;
+  updatedDayIndex: number;
+}
+
 export interface RealmConfig {
   id: string;
   name: string;
@@ -270,18 +310,57 @@ export interface WorldState {
   tasks: Record<string, QuestState>;
   logs: string[];
   sceneMessage: string;
-  calendar: {
-    year: number;
-    month: number;
-    day: number;
-  };
+  calendar: CalendarState;
+  weather: WeatherState;
+  events: WorldEventState;
+  shops: Record<string, ShopRuntimeState>;
   navigation: GridNavigationState;
+}
+
+export interface ShopRuntimeState {
+  cycleKey: string;
+  purchases: Record<string, number>;
+}
+
+export type WorldEventType = "dialogue" | "combat" | "treasure" | "quest" | "field" | "weather";
+export type WorldEventChoiceKind = "dialogue" | "combat" | "reward" | "field" | "weather" | "quest" | "dismiss";
+
+export interface WorldEventState {
+  triggeredCounts: Record<string, number>;
+  cooldowns: Record<string, number>;
+  flags: Record<string, boolean>;
+  activeEventId: string | null;
+  lastEventDayIndex: number;
+}
+
+export interface SpiritPlantInstance {
+  id: string;
+  speciesId: string;
+  grade: ItemGrade;
+  plantedAt: CalendarState;
+  years: number;
+  plotId: string;
+  growthBonusSnapshot: number;
+  growthProgressDays: number;
+}
+
+export interface SpiritFieldPlot {
+  id: string;
+  unlocked: boolean;
+  plant: SpiritPlantInstance | null;
+}
+
+export interface SpiritFieldState {
+  level: number;
+  plots: SpiritFieldPlot[];
+  totalHarvests: number;
 }
 
 export interface CaveState {
   meditationStartedAt: string | null;
   spiritArrayLevel: number;
   totalMeditationMinutes: number;
+  spiritField: SpiritFieldState;
 }
 
 export interface CombatActor extends Stats {

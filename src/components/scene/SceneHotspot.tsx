@@ -8,6 +8,17 @@ export interface SceneHotspotModel {
   x: number;
   y: number;
   type?: "npc" | "shop" | "portal" | "action";
+  dialogueActions?: SceneHotspotDialogueAction[];
+}
+
+export interface SceneHotspotDialogueAction {
+  id: string;
+  label: string;
+  kind: "chat" | "spar" | "shop" | "quest" | "gift";
+  description?: string;
+  text?: string;
+  shopId?: string;
+  disabled?: boolean;
 }
 
 export const SceneHotspot = memo(function SceneHotspot({

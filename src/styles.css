@@ -450,7 +450,7 @@ small {
 
 .status-meter-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin-top: 10px;
 }
@@ -1451,29 +1451,29 @@ small {
 .grade-xian,
 .grade-immortal {
   --grade-color: #c8f4ff;
-  --grade-glow: rgba(158, 226, 255, 1);
-  --grade-surface: rgba(50, 91, 128, 0.98);
-  --grade-ring: rgba(234, 251, 255, 0.98);
-  --grade-core: rgba(178, 235, 255, 0.66);
+  --grade-glow: rgba(172, 236, 255, 1);
+  --grade-surface: rgba(42, 94, 140, 0.98);
+  --grade-ring: rgba(244, 254, 255, 1);
+  --grade-core: rgba(185, 240, 255, 0.78);
   --grade-spark: rgba(255, 255, 255, 1);
   --grade-border-strong: rgba(228, 250, 255, 1);
   --grade-name-color: #f9feff;
   --grade-name-stroke: rgba(5, 24, 42, 0.92);
-  --grade-name-glow: rgba(150, 224, 255, 0.56);
+  --grade-name-glow: rgba(164, 235, 255, 0.72);
 }
 
 .grade-shen,
 .grade-divine {
-  --grade-color: #ff8a38;
-  --grade-glow: rgba(255, 170, 52, 1);
-  --grade-surface: rgba(176, 50, 18, 0.98);
-  --grade-ring: rgba(255, 226, 132, 1);
-  --grade-core: rgba(255, 92, 42, 0.7);
+  --grade-color: #ffb33f;
+  --grade-glow: rgba(255, 191, 58, 1);
+  --grade-surface: rgba(190, 58, 18, 0.98);
+  --grade-ring: rgba(255, 238, 158, 1);
+  --grade-core: rgba(255, 98, 34, 0.82);
   --grade-spark: rgba(255, 251, 226, 1);
   --grade-border-strong: rgba(255, 224, 114, 1);
-  --grade-name-color: #fff4bf;
+  --grade-name-color: #ffd8ca;
   --grade-name-stroke: rgba(42, 8, 0, 0.96);
-  --grade-name-glow: rgba(255, 164, 48, 0.68);
+  --grade-name-glow: rgba(255, 91, 66, 0.92);
 }
 
 .grade-card {
@@ -1575,13 +1575,27 @@ small {
 .motion-on .grade-card.grade-xian,
 .motion-on .grade-card.grade-immortal,
 .motion-on .grade-badge.grade-immortal {
-  animation: grade-immortal-aura 3.4s ease-in-out infinite;
+  animation: grade-immortal-aura 2.9s ease-in-out infinite;
 }
 
 .motion-on .grade-card.grade-shen,
 .motion-on .grade-card.grade-divine,
 .motion-on .grade-badge.grade-divine {
-  animation: grade-divine-core 3.2s ease-in-out infinite;
+  animation: grade-divine-core 2.35s ease-in-out infinite;
+}
+
+.motion-on .grade-card.grade-xian::after,
+.motion-on .grade-card.grade-immortal::after {
+  inset: -18%;
+  left: -42%;
+  width: 72%;
+  background:
+    radial-gradient(circle at 24% 34%, rgba(255, 255, 255, 0.72) 0 1px, transparent 2px),
+    radial-gradient(circle at 70% 62%, rgba(138, 228, 255, 0.56) 0 1px, transparent 2px),
+    linear-gradient(100deg, transparent 6%, rgba(255, 255, 255, 0.56) 42%, rgba(126, 222, 255, 0.36) 55%, transparent 74%);
+  transform: rotate(13deg);
+  animation: grade-immortal-sheen 3.2s ease-in-out infinite;
+  opacity: 0.92;
 }
 
 .motion-on .grade-card.grade-shen::after,
@@ -1592,10 +1606,105 @@ small {
   background:
     radial-gradient(circle at 28% 30%, rgba(255, 246, 214, 0.36) 0 1px, transparent 2px),
     radial-gradient(circle at 70% 62%, rgba(255, 61, 138, 0.3) 0 1px, transparent 2px),
-    conic-gradient(from 0deg, rgba(255, 106, 61, 0.18), rgba(255, 200, 87, 0.24), rgba(255, 61, 138, 0.16), rgba(122, 92, 255, 0.16), rgba(255, 106, 61, 0.18));
+    radial-gradient(circle at 48% 48%, rgba(255, 245, 180, 0.22), transparent 32%),
+    conic-gradient(from 0deg, rgba(255, 106, 61, 0.3), rgba(255, 224, 94, 0.4), rgba(255, 61, 138, 0.22), rgba(122, 92, 255, 0.22), rgba(255, 106, 61, 0.3));
   transform: none;
-  animation: grade-divine-rainbow 6.2s linear infinite;
-  opacity: 0.72;
+  animation: grade-divine-rainbow 4.8s linear infinite;
+  opacity: 0.86;
+}
+
+.motion-on :is(button.grade-card, .item-grade-press.grade-card, .equipment-slot-card.clickable.grade-card):is(
+    .grade-di,
+    .grade-earth,
+    .grade-tian,
+    .grade-heaven,
+    .grade-xian,
+    .grade-immortal,
+    .grade-shen,
+    .grade-divine
+  ):is(:hover, :focus-visible) {
+  animation: grade-high-hover-bloom 1.25s ease-in-out infinite;
+  filter: brightness(1.08) saturate(1.12);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--grade-ring) 52%, transparent),
+    inset 0 0 24px color-mix(in srgb, var(--grade-color) 28%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--grade-border-strong) 54%, transparent),
+    0 0 20px color-mix(in srgb, var(--grade-glow) 72%, transparent),
+    0 0 44px color-mix(in srgb, var(--grade-color) 26%, transparent);
+}
+
+.motion-on :is(button.grade-card, .item-grade-press.grade-card, .equipment-slot-card.clickable.grade-card):is(
+    .grade-di,
+    .grade-earth,
+    .grade-tian,
+    .grade-heaven,
+    .grade-xian,
+    .grade-immortal,
+    .grade-shen,
+    .grade-divine
+  ):active {
+  animation: grade-high-click-bloom 0.44s ease-out;
+}
+
+.motion-on :is(button.grade-card, .item-grade-press.grade-card, .equipment-slot-card.clickable.grade-card):is(
+    .grade-di,
+    .grade-earth,
+    .grade-tian,
+    .grade-heaven,
+    .grade-xian,
+    .grade-immortal,
+    .grade-shen,
+    .grade-divine
+  ):active::after {
+  inset: -44%;
+  left: auto;
+  z-index: 0;
+  width: auto;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--grade-spark) 72%, transparent) 0 6%, color-mix(in srgb, var(--grade-color) 54%, transparent) 7% 18%, transparent 40%),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--grade-ring) 34%, transparent), transparent 56%);
+  transform: none;
+  animation: grade-click-ripple 0.48s ease-out;
+  opacity: 0.95;
+}
+
+.grade-card.grade-shen :is(.item-slot-name, .grade-name),
+.grade-card.grade-divine :is(.item-slot-name, .grade-name),
+.inventory-grid-slot.grade-shen strong,
+.inventory-grid-slot.grade-divine strong,
+.equipment-slot-card.grade-shen strong,
+.equipment-slot-card.grade-divine strong,
+.combat-slot.grade-shen strong,
+.combat-slot.grade-divine strong,
+.item-row.grade-shen strong,
+.item-row.grade-divine strong,
+.item-detail-card.grade-shen .item-detail-title-row strong,
+.item-detail-card.grade-divine .item-detail-title-row strong,
+.grade-name.grade-shen,
+.grade-name.grade-divine {
+  color: #ffd6c8;
+  font-weight: 950;
+  text-shadow:
+    0 1px 1px rgba(42, 8, 0, 0.98),
+    0 0 6px rgba(255, 82, 54, 0.78),
+    0 0 12px rgba(255, 196, 64, 0.42);
+}
+
+.motion-on .grade-card.grade-shen :is(.item-slot-name, .grade-name),
+.motion-on .grade-card.grade-divine :is(.item-slot-name, .grade-name),
+.motion-on .inventory-grid-slot.grade-shen strong,
+.motion-on .inventory-grid-slot.grade-divine strong,
+.motion-on .equipment-slot-card.grade-shen strong,
+.motion-on .equipment-slot-card.grade-divine strong,
+.motion-on .combat-slot.grade-shen strong,
+.motion-on .combat-slot.grade-divine strong,
+.motion-on .item-row.grade-shen strong,
+.motion-on .item-row.grade-divine strong,
+.motion-on .item-detail-card.grade-shen .item-detail-title-row strong,
+.motion-on .item-detail-card.grade-divine .item-detail-title-row strong,
+.motion-on .grade-name.grade-shen,
+.motion-on .grade-name.grade-divine {
+  animation: grade-divine-text-flash 1.9s ease-in-out infinite;
 }
 
 .motion-off .grade-card::after,
@@ -1899,25 +2008,40 @@ small {
 
 .grade-card.grade-xian,
 .grade-card.grade-immortal {
+  background:
+    radial-gradient(circle at 50% -18%, rgba(255, 255, 255, 0.56), transparent 40%),
+    radial-gradient(circle at 16% 20%, rgba(127, 218, 255, 0.38), transparent 34%),
+    radial-gradient(circle at 88% 82%, rgba(255, 255, 255, 0.28), transparent 32%),
+    linear-gradient(145deg, rgba(40, 93, 142, 0.98), rgba(20, 46, 78, 0.96) 58%, rgba(8, 22, 44, 0.98));
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.34),
-    inset 0 0 24px rgba(167, 232, 255, 0.38),
-    inset 0 0 0 2px rgba(94, 216, 255, 0.14),
-    0 0 0 1px rgba(232, 251, 255, 0.72),
-    0 0 20px rgba(155, 226, 255, 0.46),
-    0 0 30px rgba(255, 255, 255, 0.18);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    inset 0 0 0 2px rgba(112, 226, 255, 0.22),
+    inset 0 0 28px rgba(167, 232, 255, 0.48),
+    inset 0 -10px 24px rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(232, 251, 255, 0.9),
+    0 0 18px rgba(155, 226, 255, 0.58),
+    0 0 34px rgba(255, 255, 255, 0.3),
+    0 0 46px rgba(98, 216, 255, 0.18);
 }
 
 .grade-card.grade-shen,
 .grade-card.grade-divine {
+  background:
+    radial-gradient(circle at 50% -22%, rgba(255, 250, 202, 0.66), transparent 42%),
+    radial-gradient(circle at 18% 18%, rgba(255, 70, 42, 0.48), transparent 34%),
+    radial-gradient(circle at 88% 76%, rgba(255, 215, 92, 0.38), transparent 36%),
+    radial-gradient(circle at 50% 62%, rgba(255, 82, 32, 0.42), transparent 48%),
+    linear-gradient(145deg, rgba(174, 46, 12, 0.98), rgba(92, 18, 8, 0.98) 52%, rgba(32, 6, 4, 0.98));
   box-shadow:
-    inset 0 0 0 1px rgba(255, 251, 212, 0.42),
-    inset 0 0 28px rgba(255, 86, 36, 0.44),
-    inset 0 0 0 2px rgba(255, 214, 86, 0.2),
-    0 0 0 1px rgba(255, 224, 114, 0.82),
-    0 0 22px rgba(255, 176, 48, 0.52),
-    0 0 32px rgba(255, 64, 52, 0.28),
-    0 0 42px rgba(112, 92, 255, 0.14);
+    inset 0 0 0 1px rgba(255, 253, 218, 0.58),
+    inset 0 0 0 2px rgba(255, 214, 86, 0.32),
+    inset 0 0 34px rgba(255, 86, 36, 0.56),
+    inset 0 -12px 28px rgba(255, 220, 98, 0.14),
+    0 0 0 1px rgba(255, 224, 114, 0.98),
+    0 0 16px rgba(255, 230, 128, 0.7),
+    0 0 30px rgba(255, 176, 48, 0.64),
+    0 0 46px rgba(255, 64, 52, 0.4),
+    0 0 58px rgba(112, 92, 255, 0.18);
 }
 
 .grade-card.grade-di::before,
@@ -1957,22 +2081,24 @@ small {
 .grade-card.grade-xian::before,
 .grade-card.grade-immortal::before {
   background:
-    radial-gradient(circle at 50% -8%, rgba(255, 255, 255, 0.45), transparent 36%),
-    radial-gradient(circle at 18% 14%, rgba(153, 225, 255, 0.28), transparent 28%),
-    radial-gradient(circle at 86% 16%, rgba(255, 255, 255, 0.24), transparent 26%),
-    linear-gradient(90deg, rgba(142, 222, 255, 0.32), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.32)),
-    linear-gradient(180deg, rgba(225, 250, 255, 0.18), transparent 44%, rgba(5, 24, 42, 0.24));
+    radial-gradient(circle at 50% -8%, rgba(255, 255, 255, 0.62), transparent 36%),
+    radial-gradient(circle at 18% 14%, rgba(153, 225, 255, 0.38), transparent 28%),
+    radial-gradient(circle at 86% 16%, rgba(255, 255, 255, 0.32), transparent 26%),
+    radial-gradient(circle at 28% 82%, rgba(130, 222, 255, 0.24), transparent 26%),
+    linear-gradient(90deg, rgba(142, 222, 255, 0.44), transparent 16%, transparent 84%, rgba(255, 255, 255, 0.44)),
+    linear-gradient(180deg, rgba(225, 250, 255, 0.26), transparent 44%, rgba(5, 24, 42, 0.24));
 }
 
 .grade-card.grade-shen::before,
 .grade-card.grade-divine::before {
   background:
-    radial-gradient(circle at 50% -10%, rgba(255, 250, 198, 0.52), transparent 36%),
-    radial-gradient(circle at 12% 18%, rgba(255, 70, 46, 0.32), transparent 24%),
-    radial-gradient(circle at 88% 16%, rgba(255, 222, 100, 0.34), transparent 24%),
-    radial-gradient(circle at 72% 78%, rgba(110, 92, 255, 0.14), transparent 26%),
-    linear-gradient(90deg, rgba(255, 64, 52, 0.38), transparent 18%, transparent 82%, rgba(255, 220, 96, 0.42)),
-    linear-gradient(180deg, rgba(255, 218, 92, 0.22), transparent 44%, rgba(45, 6, 0, 0.28));
+    radial-gradient(circle at 50% -10%, rgba(255, 252, 206, 0.72), transparent 36%),
+    radial-gradient(circle at 12% 18%, rgba(255, 70, 46, 0.42), transparent 24%),
+    radial-gradient(circle at 88% 16%, rgba(255, 226, 110, 0.5), transparent 24%),
+    radial-gradient(circle at 72% 78%, rgba(110, 92, 255, 0.22), transparent 26%),
+    radial-gradient(circle at 38% 70%, rgba(255, 248, 196, 0.24), transparent 22%),
+    linear-gradient(90deg, rgba(255, 64, 52, 0.52), transparent 16%, transparent 84%, rgba(255, 224, 106, 0.58)),
+    linear-gradient(180deg, rgba(255, 218, 92, 0.32), transparent 44%, rgba(45, 6, 0, 0.3));
 }
 
 .equipment-slot-meta {
@@ -3166,6 +3292,112 @@ button.scene-hotspot-button:focus-visible {
   padding: 12px;
 }
 
+.shop-refresh-note {
+  margin: 0 0 8px;
+  color: #9fb5ad;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.shop-inline-list,
+.shop-catalog-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.bottom-sheet-content.shop-catalog-sheet {
+  max-height: min(86vh, 760px);
+  border-color: rgba(94, 234, 212, 0.18);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(94, 234, 212, 0.13), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 44%),
+    rgba(8, 13, 22, 0.94);
+}
+
+.shop-catalog {
+  display: grid;
+  gap: 12px;
+}
+
+.shop-catalog-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.36);
+}
+
+.shop-catalog-summary h3,
+.shop-catalog-summary p {
+  margin: 0;
+}
+
+.shop-catalog-summary h3 {
+  color: #e5f8f1;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.shop-catalog-summary p,
+.shop-catalog-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shop-catalog-summary strong,
+.shop-catalog-summary span {
+  color: var(--gold);
+}
+
+.shop-catalog-grid {
+  grid-template-columns: 1fr;
+  max-height: min(54vh, 460px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.shop-item-row {
+  min-height: 72px;
+}
+
+.shop-item-row.sold-out {
+  opacity: 0.58;
+}
+
+.shop-item-main {
+  gap: 5px;
+}
+
+.shop-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shop-item-title strong {
+  min-width: 0;
+}
+
+.shop-item-row small {
+  color: #aebfb8;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.shop-item-row span {
+  color: var(--gold);
+  font-size: 11px;
+}
+
+.shop-item-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .item-row button,
 .task-row button {
   min-height: 36px;
@@ -3566,6 +3798,99 @@ button.scene-hotspot-button:focus-visible {
   margin-bottom: 0;
 }
 
+.spirit-field-card {
+  gap: 12px;
+}
+
+.spirit-field-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.spirit-field-plot-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.spirit-field-plot {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(6, 12, 20, 0.36);
+}
+
+.spirit-field-plot.locked {
+  opacity: 0.66;
+}
+
+.spirit-field-plot-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.spirit-field-plot-title strong {
+  color: #f8fafc;
+}
+
+.spirit-field-plot-title span,
+.spirit-plant-detail small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spirit-seed-list,
+.spirit-plant-detail {
+  display: grid;
+  gap: 8px;
+}
+
+.spirit-seed-list .ghost-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 46px;
+  text-align: left;
+}
+
+.spirit-seed-list .ghost-button small {
+  grid-column: 2;
+  color: var(--muted);
+}
+
+.spirit-plant-detail p {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.map-event-content {
+  display: grid;
+  gap: 12px;
+}
+
+.map-event-content p {
+  margin: 0;
+  color: #dbeafe;
+  line-height: 1.6;
+}
+
+.map-event-choice-list {
+  display: grid;
+  gap: 8px;
+}
+
+.map-event-choice-list .ghost-button {
+  justify-content: flex-start;
+  min-height: 46px;
+}
+
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3712,17 +4037,38 @@ button.scene-hotspot-button:focus-visible {
   0%,
   100% {
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 20%, transparent),
-      inset 0 0 30px color-mix(in srgb, var(--grade-color) 22%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--grade-ring) 42%, transparent),
-      0 0 32px var(--grade-glow);
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 28%, transparent),
+      inset 0 0 34px color-mix(in srgb, var(--grade-color) 28%, transparent),
+      inset 0 0 0 2px rgba(255, 255, 255, 0.16),
+      0 0 0 1px color-mix(in srgb, var(--grade-ring) 56%, transparent),
+      0 0 36px var(--grade-glow),
+      0 0 48px rgba(255, 255, 255, 0.18);
   }
   50% {
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 34%, transparent),
-      inset 0 0 38px color-mix(in srgb, var(--grade-color) 28%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--grade-ring) 68%, transparent),
-      0 0 48px var(--grade-glow);
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 48%, transparent),
+      inset 0 0 44px color-mix(in srgb, var(--grade-color) 36%, transparent),
+      inset 0 0 0 2px rgba(255, 255, 255, 0.26),
+      0 0 0 1px color-mix(in srgb, var(--grade-ring) 84%, transparent),
+      0 0 54px var(--grade-glow),
+      0 0 70px rgba(255, 255, 255, 0.26);
+  }
+}
+
+@keyframes grade-immortal-sheen {
+  0% {
+    transform: translateX(-58%) rotate(13deg);
+    opacity: 0;
+  }
+  28% {
+    opacity: 0.88;
+  }
+  62% {
+    opacity: 0.54;
+  }
+  100% {
+    transform: translateX(210%) rotate(13deg);
+    opacity: 0;
   }
 }
 
@@ -3730,34 +4076,115 @@ button.scene-hotspot-button:focus-visible {
   0%,
   100% {
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 28%, transparent),
-      inset 0 0 34px color-mix(in srgb, var(--grade-color) 26%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--grade-ring) 52%, transparent),
-      0 0 32px var(--grade-glow),
-      0 0 38px rgba(255, 200, 87, 0.2);
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 42%, transparent),
+      inset 0 0 42px color-mix(in srgb, var(--grade-color) 34%, transparent),
+      inset 0 0 0 2px rgba(255, 235, 132, 0.2),
+      0 0 0 1px color-mix(in srgb, var(--grade-ring) 72%, transparent),
+      0 0 38px var(--grade-glow),
+      0 0 50px rgba(255, 200, 87, 0.28),
+      0 0 64px rgba(255, 64, 52, 0.18);
   }
   50% {
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 42%, transparent),
-      inset 0 0 42px color-mix(in srgb, var(--grade-color) 32%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--grade-ring) 78%, transparent),
-      0 0 48px var(--grade-glow),
-      0 0 46px rgba(255, 106, 61, 0.26);
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-color) 62%, transparent),
+      inset 0 0 52px color-mix(in srgb, var(--grade-color) 44%, transparent),
+      inset 0 0 0 2px rgba(255, 246, 180, 0.34),
+      0 0 0 1px color-mix(in srgb, var(--grade-ring) 96%, transparent),
+      0 0 58px var(--grade-glow),
+      0 0 64px rgba(255, 106, 61, 0.36),
+      0 0 84px rgba(255, 228, 112, 0.26);
   }
 }
 
 @keyframes grade-divine-rainbow {
   from {
     transform: rotate(0deg) scale(1);
-    opacity: 0.58;
+    opacity: 0.72;
   }
   50% {
-    transform: rotate(180deg) scale(1.03);
-    opacity: 0.8;
+    transform: rotate(180deg) scale(1.06);
+    opacity: 0.94;
   }
   to {
     transform: rotate(360deg) scale(1);
-    opacity: 0.58;
+    opacity: 0.72;
+  }
+}
+
+@keyframes grade-click-ripple {
+  0% {
+    transform: scale(0.32);
+    opacity: 0.98;
+  }
+  68% {
+    opacity: 0.46;
+  }
+  100% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+}
+
+@keyframes grade-high-hover-bloom {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-ring) 44%, transparent),
+      inset 0 0 24px color-mix(in srgb, var(--grade-color) 28%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--grade-border-strong) 48%, transparent),
+      0 0 22px color-mix(in srgb, var(--grade-glow) 72%, transparent),
+      0 0 40px color-mix(in srgb, var(--grade-color) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-ring) 70%, transparent),
+      inset 0 0 34px color-mix(in srgb, var(--grade-color) 42%, transparent),
+      0 0 0 2px color-mix(in srgb, var(--grade-border-strong) 58%, transparent),
+      0 0 34px color-mix(in srgb, var(--grade-glow) 92%, transparent),
+      0 0 68px color-mix(in srgb, var(--grade-color) 34%, transparent);
+  }
+}
+
+@keyframes grade-high-click-bloom {
+  0% {
+    filter: brightness(1.06) saturate(1.08);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-ring) 52%, transparent),
+      inset 0 0 28px color-mix(in srgb, var(--grade-color) 30%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--grade-border-strong) 54%, transparent),
+      0 0 18px color-mix(in srgb, var(--grade-glow) 72%, transparent),
+      0 0 38px color-mix(in srgb, var(--grade-color) 24%, transparent);
+  }
+  42% {
+    filter: brightness(1.24) saturate(1.22);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--grade-ring) 72%, transparent),
+      inset 0 0 36px color-mix(in srgb, var(--grade-color) 42%, transparent),
+      0 0 0 2px color-mix(in srgb, var(--grade-border-strong) 58%, transparent),
+      0 0 28px color-mix(in srgb, var(--grade-glow) 92%, transparent),
+      0 0 62px color-mix(in srgb, var(--grade-color) 34%, transparent);
+  }
+  100% {
+    filter: brightness(1) saturate(1);
+  }
+}
+
+@keyframes grade-divine-text-flash {
+  0%,
+  100% {
+    color: #ffd6c8;
+    text-shadow:
+      0 1px 1px rgba(42, 8, 0, 0.98),
+      0 0 6px rgba(255, 82, 54, 0.68),
+      0 0 12px rgba(255, 196, 64, 0.34);
+  }
+  48% {
+    color: #fff1d0;
+    text-shadow:
+      0 1px 1px rgba(42, 8, 0, 1),
+      0 0 8px rgba(255, 76, 56, 0.92),
+      0 0 18px rgba(255, 217, 92, 0.62),
+      0 0 26px rgba(255, 61, 138, 0.22);
   }
 }
 
@@ -4652,9 +5079,60 @@ button.location-scene-hotspot {
   padding: 4px 8px;
 }
 
+.scene-hotspot-button.scene-hotspot-npc {
+  min-width: 0;
+  min-height: 26px;
+  padding: 2px 4px;
+  transform: translate(-50%, -118%);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #fff7cc;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-shadow:
+    0 2px 4px rgba(2, 6, 23, 0.96),
+    0 0 10px rgba(246, 196, 83, 0.72),
+    0 0 18px rgba(94, 234, 212, 0.26);
+  backdrop-filter: none;
+}
+
+.scene-hotspot-button.scene-hotspot-npc i {
+  display: none;
+}
+
+button.scene-hotspot-button.scene-hotspot-npc:not(:disabled):hover,
+button.scene-hotspot-button.scene-hotspot-npc:focus-visible {
+  transform: translate(-50%, -118%);
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  color: #fff1a8;
+  text-shadow:
+    0 2px 5px rgba(2, 6, 23, 1),
+    0 0 12px rgba(246, 196, 83, 0.9),
+    0 0 24px rgba(94, 234, 212, 0.36);
+}
+
+.bottom-sheet-content.npc-dialogue-glass {
+  border-color: rgba(218, 239, 230, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), transparent 42%),
+    radial-gradient(circle at 18% 0%, rgba(94, 234, 212, 0.14), transparent 38%),
+    rgba(9, 14, 22, 0.72);
+  box-shadow:
+    0 -18px 48px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 26px rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  backdrop-filter: blur(18px) saturate(1.25);
+}
+
 .npc-dialogue-sheet {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 66px minmax(0, 1fr) minmax(76px, 0.34fr);
   gap: 12px;
   align-items: start;
 }
@@ -4662,7 +5140,7 @@ button.location-scene-hotspot {
 .npc-portrait-frame {
   display: grid;
   place-items: center;
-  width: 72px;
+  width: 66px;
   aspect-ratio: 1;
   overflow: hidden;
   border: 1px solid rgba(246, 196, 83, 0.36);
@@ -4687,6 +5165,77 @@ button.location-scene-hotspot {
   margin: 0;
   color: #dce9e3;
   line-height: 1.6;
+}
+
+.npc-dialogue-copy small {
+  display: block;
+  margin-top: 8px;
+  color: #b9c8c1;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.npc-dialogue-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.npc-dialogue-actions button {
+  display: grid;
+  gap: 2px;
+  min-height: 42px;
+  padding: 7px 8px;
+  border: 1px solid rgba(208, 229, 218, 0.16);
+  border-radius: 8px;
+  color: #e9f7f1;
+  text-align: left;
+  background:
+    linear-gradient(145deg, rgba(15, 23, 42, 0.72), rgba(2, 6, 23, 0.46)),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.npc-dialogue-actions button.active,
+.npc-dialogue-actions button:not(:disabled):hover,
+.npc-dialogue-actions button:focus-visible {
+  border-color: rgba(94, 234, 212, 0.58);
+  outline: none;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(94, 234, 212, 0.18), transparent 62%),
+    rgba(15, 23, 42, 0.72);
+  box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.npc-dialogue-actions button:disabled {
+  opacity: 0.54;
+}
+
+.npc-dialogue-actions span {
+  color: #fff8dc;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.npc-dialogue-actions small {
+  color: #93a8a0;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+@media (max-width: 390px) {
+  .npc-dialogue-sheet {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .npc-portrait-frame {
+    width: 56px;
+  }
+
+  .npc-dialogue-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .floating-text {
