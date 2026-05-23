@@ -276,6 +276,21 @@ export interface WorldState {
     month: number;
     day: number;
   };
+  time: {
+    version: number;
+    tick: number;
+    day: number;
+    hour: number;
+    solarTerm: string;
+    weather: string;
+  };
+  passive: {
+    spiritFieldGrowth: number;
+    shopRefreshTick: number;
+    npcStateSeed: number;
+    eventCooldowns: Record<string, number>;
+    questDeadlines: Record<string, number>;
+  };
   navigation: GridNavigationState;
 }
 
@@ -351,7 +366,7 @@ export interface SettingsState {
 }
 
 export interface RootSave {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   recentSlotId: string | null;
   settings: SettingsState;
   slots: Array<SaveSlot | null>;

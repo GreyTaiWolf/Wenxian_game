@@ -5,6 +5,7 @@ import type { CombatActor, CombatState, GameState, ItemAffix, SkillConfig, Targe
 import { chooseAiAction } from "./ai";
 import { getActiveEquipmentAffixes, getEffectiveStats } from "./equipment";
 import { addItems, addRewards, appendLog } from "./state";
+import { advanceTime } from "./time";
 
 function toPlayerActor(game: GameState): CombatActor {
   const stats = getEffectiveStats(game);
@@ -499,7 +500,7 @@ export function beginCombat(game: GameState, groupId: string): GameState {
     logs: [`遭遇 ${group.title}，战斗开始。`],
     rewards: group.rewards,
   };
-  return advanceUntilPlayer(game, applyCombatStartAffixes(combat));
+  return advanceTime(advanceUntilPlayer(game, applyCombatStartAffixes(combat)), 1);
 }
 
 export function performPlayerSkill(game: GameState, skillId: string, targetId?: string): GameState {
@@ -512,7 +513,7 @@ export function performPlayerSkill(game: GameState, skillId: string, targetId?: 
     return { ...game, combat: preparedCombat };
   }
   const combat = advanceTurn(applySkill(preparedCombat, actor.id, skillId, targetId));
-  return advanceUntilPlayer(game, combat);
+  return advanceTime(advanceUntilPlayer(game, combat), 1);
 }
 
 export function performPlayerBasic(game: GameState): GameState {
@@ -525,7 +526,7 @@ export function performPlayerBasic(game: GameState): GameState {
     return { ...game, combat: preparedCombat };
   }
   const combat = advanceTurn(applySkill(preparedCombat, actor.id, "basic_strike"));
-  return advanceUntilPlayer(game, combat);
+  return advanceTime(advanceUntilPlayer(game, combat), 1);
 }
 
 export function performDefend(game: GameState): GameState {
@@ -542,7 +543,7 @@ export function performDefend(game: GameState): GameState {
     ...guarded,
     logs: [`${actor.name} 稳住气息，进入防御。`, ...guarded.logs].slice(0, 16),
   });
-  return advanceUntilPlayer(game, combat);
+  return advanceTime(advanceUntilPlayer(game, combat), 1);
 }
 
 export function performEscape(game: GameState): GameState {
@@ -556,14 +557,14 @@ export function performEscape(game: GameState): GameState {
   }
   const escaped = Math.random() < Math.min(0.95, 0.72 + affixEffectValue(actor, "escape_rate"));
   if (escaped) {
-    return appendLog({ ...game, combat: undefined }, "你寻得空隙，带队脱离战斗。");
+    return advanceTime(appendLog({ ...game, combat: undefined }, "你寻得空隙，带队脱离战斗。"), 1);
   }
   const combat = advanceTurn({
     ...game.combat,
     ...preparedCombat,
     logs: ["逃离失败，敌人步步紧逼。", ...preparedCombat.logs].slice(0, 16),
   });
-  return advanceUntilPlayer(game, combat);
+  return advanceTime(advanceUntilPlayer(game, combat), 1);
 }
 
 export function performUseItem(game: GameState, itemId: string): GameState {
@@ -600,7 +601,7 @@ export function performUseItem(game: GameState, itemId: string): GameState {
     ...healed,
     logs: [`${actor.name} 服下 ${formatItemName(item)}，气血 +${item.combatHeal}。`, ...healed.logs].slice(0, 16),
   });
-  return advanceUntilPlayer({ ...withItemSpent, combat }, combat);
+  return advanceTime(advanceUntilPlayer({ ...withItemSpent, combat }, combat), 1);
 }
 
 export function performArtifactAction(game: GameState): GameState {
@@ -623,7 +624,7 @@ export function performArtifactAction(game: GameState): GameState {
     ...struck,
     logs: [`${actor.name} 催动法宝共鸣，对 ${target.name} 造成 ${damage} 伤害，并短暂锁魂。`, ...struck.logs].slice(0, 16),
   });
-  return advanceUntilPlayer(game, combat);
+  return advanceTime(advanceUntilPlayer(game, combat), 1);
 }
 
 export function canUseArtifactAction(game: GameState): boolean {
@@ -637,7 +638,7 @@ export function grantTreasure(game: GameState): GameState {
     ? { spiritStones: 60, items: [{ itemId: "foundation_pill", amount: 1 }] }
     : { spiritStones: 120, items: [{ itemId: "greenwood_essence", amount: 1 }] };
   const rewarded = addRewards(game, rewards);
-  return appendLog(rewarded, foundPill ? "你在玉瓶中找到一枚筑基丹。" : "丹室药气散尽，只余青木灵液与灵石。");
+  return advanceTime(appendLog(rewarded, foundPill ? "你在玉瓶中找到一枚筑基丹。" : "丹室药气散尽，只余青木灵液与灵石。"), 2);
 }
 
 export function grantGatherReward(game: GameState): GameState {
@@ -645,5 +646,5 @@ export function grantGatherReward(game: GameState): GameState {
     { itemId: "qi_grass", amount: 1 },
     { itemId: "spirit_herb", amount: Math.random() < 0.45 ? 1 : 0 },
   ].filter((item) => item.amount > 0));
-  return appendLog(rewarded, "你采得凝气草，草叶上的灵雾缓缓散开。");
+  return advanceTime(appendLog(rewarded, "你采得凝气草，草叶上的灵雾缓缓散开。"), 2);
 }

@@ -2,7 +2,7 @@ import { formatItemName, getItem, normalizeItemId } from "../data/items";
 import { getNextRealm, getRealm } from "../data/progression";
 import { createDefaultGridNavigationState } from "../data/gridMaps";
 import { createEquipmentInstance } from "./equipment";
-import { normalizeCalendarDate } from "./time";
+import { advanceTime, createDefaultPassiveState, createDefaultWorldTime, normalizeCalendarDate } from "./time";
 import type { ActorKind, CaveState, CombatLoadout, Cost, GameState, ItemAmount, PlayerState, Stats, TeamMember, UnlockKey } from "../types";
 
 export const starterStats: Stats = {
@@ -209,6 +209,8 @@ export function createNewGame(name: string): GameState {
       logs: ["你在青云城外醒来，远处钟声如水，仙途由此开始。"],
       sceneMessage: "选择城中地点，或先去修炼聚气。",
       calendar: normalizeCalendarDate({ year: 1, month: 1, day: 1 }),
+      time: createDefaultWorldTime(),
+      passive: createDefaultPassiveState(),
       navigation: createDefaultGridNavigationState(),
     },
     cave: createDefaultCaveState(),
@@ -320,7 +322,7 @@ export function cultivate(game: GameState): GameState {
       dailyCultivationCount: game.player.dailyCultivationCount + 1,
     },
   };
-  return appendLog(nextGame, `你运转周天，修为 +${gain}。`);
+  return advanceTime(appendLog(nextGame, `你运转周天，修为 +${gain}。`), 2);
 }
 
 export function attemptBreakthrough(game: GameState): GameState {

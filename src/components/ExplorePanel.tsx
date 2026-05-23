@@ -1033,7 +1033,7 @@ function getNavigationCoord(game: GameState, mapId: string): GridCoord {
 }
 
 function updateNavigationPosition(game: GameState, mapId: string, coord: GridCoord, activeMapId = mapId): GameState {
-  return {
+  return advanceTime({
     ...game,
     world: {
       ...game.world,
@@ -1046,7 +1046,7 @@ function updateNavigationPosition(game: GameState, mapId: string, coord: GridCoo
         },
       },
     },
-  };
+  }, 1);
 }
 
 function getRegionIdFromGridMapId(mapId: string): string | null {
@@ -1211,13 +1211,13 @@ function handleAction(game: GameState, action: SceneAction): GameState {
     return joinSect(game);
   }
   if (action.kind === "combat" && action.targetId) {
-    return beginCombat(game, action.targetId);
+    return advanceTime(beginCombat(game, action.targetId), 1);
   }
   if (action.kind === "gather") {
     if (action.rewards) {
-      return appendLog(addRewards(game, action.rewards), action.text ?? "你细心采集，收起此地灵物。");
+      return advanceTime(appendLog(addRewards(game, action.rewards), action.text ?? "你细心采集，收起此地灵物。"), 2);
     }
-    return grantGatherReward(game);
+    return advanceTime(grantGatherReward(game), 2);
   }
   if (action.kind === "recruitPet") {
     return recruitPet(game);
@@ -1227,9 +1227,9 @@ function handleAction(game: GameState, action: SceneAction): GameState {
   }
   if (action.kind === "treasure") {
     if (action.rewards) {
-      return appendLog(addRewards(game, action.rewards), action.text ?? "你搜寻此地，得到一份机缘。");
+      return advanceTime(appendLog(addRewards(game, action.rewards), action.text ?? "你搜寻此地，得到一份机缘。"), 2);
     }
-    return grantTreasure(game);
+    return advanceTime(grantTreasure(game), 2);
   }
   return game;
 }

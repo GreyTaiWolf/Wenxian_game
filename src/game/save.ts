@@ -2,7 +2,7 @@ import type { CombatActor, CombatState, GameState, RootSave, SaveSlot, SettingsS
 import { normalizeGridNavigationState } from "../data/gridMaps";
 import { itemGradeOrder, normalizeItemId } from "../data/items";
 import { normalizeCaveState } from "./cave";
-import { normalizeCalendarDate } from "./time";
+import { createDefaultPassiveState, createDefaultWorldTime, normalizeCalendarDate } from "./time";
 import { createEquipmentInstance, normalizeInventoryState } from "./equipment";
 import { createNewGame, getDefaultDodge, normalizePlayerState, normalizeStats } from "./state";
 
@@ -20,7 +20,7 @@ const gradePreviewItemIdPrefix = "grade_preview_sword_";
 
 export function createEmptyRootSave(): RootSave {
   return {
-    version: 2,
+    version: 3,
     recentSlotId: null,
     settings: defaultSettings,
     slots: [null, null, null],
@@ -34,13 +34,13 @@ export function loadRootSave(): RootSave {
       return createEmptyRootSave();
     }
     const parsed = JSON.parse(raw) as RootSave;
-    if (![1, 2].includes(parsed.version) || !Array.isArray(parsed.slots)) {
+    if (![1, 2, 3].includes(parsed.version) || !Array.isArray(parsed.slots)) {
       return createEmptyRootSave();
     }
     const normalizedRoot = {
       ...createEmptyRootSave(),
       ...parsed,
-      version: 2 as const,
+      version: 3 as const,
       settings: { ...defaultSettings, ...parsed.settings },
       slots: [normalizeSlot(parsed.slots[0]), normalizeSlot(parsed.slots[1]), normalizeSlot(parsed.slots[2])],
     };
@@ -104,6 +104,8 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
       world: {
         ...slot.game.world,
         calendar: normalizeCalendarDate(slot.game.world?.calendar),
+        time: { ...createDefaultWorldTime(), ...(slot.game.world as GameState["world"] | undefined)?.time },
+        passive: { ...createDefaultPassiveState(), ...(slot.game.world as GameState["world"] | undefined)?.passive },
         navigation: normalizeGridNavigationState(slot.game.world?.navigation),
       },
       cave: normalizeCaveState(slot.game.cave),
