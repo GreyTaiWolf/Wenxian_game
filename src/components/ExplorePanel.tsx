@@ -12,7 +12,18 @@ import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZone
 import { REGION_TILE_MOVE_DAYS, WORLD_TILE_MOVE_DAYS } from "../data/time";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
-import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type LocationSceneHotspot, type SceneAction, type SceneNode } from "../data/world";
+import {
+  getLocation,
+  getRegion,
+  getScene,
+  shopItems,
+  tasks,
+  type LocationNode,
+  type LocationSceneBlockedRect,
+  type LocationSceneHotspot,
+  type SceneAction,
+  type SceneNode,
+} from "../data/world";
 import { getWorldProvince, worldProvinces, type WorldProvince } from "../data/worldMap";
 import { getSceneImage, mapImages, regionMapImages } from "../data/assets";
 import { beginCombat, grantGatherReward, grantTreasure } from "../game/combatEngine";
@@ -621,7 +632,7 @@ function LocationSceneImageMap({
           }}
         >
           <img src={imageSrc} alt={`${location.name}场景图`} draggable={false} loading="lazy" />
-          {sceneGridOpen ? <LocationSceneGridOverlay /> : null}
+          {sceneGridOpen ? <LocationSceneGridOverlay blockedRects={location.sceneMapBlockedRects ?? []} /> : null}
           {hotspots.map((hotspot) => (
             <button
               aria-label={`前往${hotspot.label}`}
@@ -875,7 +886,7 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function LocationSceneGridOverlay() {
+function LocationSceneGridOverlay({ blockedRects }: { blockedRects: LocationSceneBlockedRect[] }) {
   const cells = [];
   for (let y = 0; y < LOCATION_SCENE_GRID_HEIGHT; y += 1) {
     for (let x = 0; x < LOCATION_SCENE_GRID_WIDTH; x += 1) {
@@ -887,7 +898,7 @@ function LocationSceneGridOverlay() {
     <div className="location-scene-grid-overlay" aria-hidden="true">
       {cells.map((cell) => (
         <span
-          className="location-scene-grid-cell"
+          className={`location-scene-grid-cell${isLocationSceneBlockedCell(cell, blockedRects) ? " blocked" : ""}`}
           key={`${cell.x}-${cell.y}`}
           style={{
             left: `${(cell.x / LOCATION_SCENE_GRID_WIDTH) * 100}%`,
@@ -900,6 +911,12 @@ function LocationSceneGridOverlay() {
         </span>
       ))}
     </div>
+  );
+}
+
+function isLocationSceneBlockedCell(cell: { x: number; y: number }, blockedRects: LocationSceneBlockedRect[]) {
+  return blockedRects.some(
+    (rect) => cell.x >= rect.x && cell.x < rect.x + rect.width && cell.y >= rect.y && cell.y < rect.y + rect.height,
   );
 }
 

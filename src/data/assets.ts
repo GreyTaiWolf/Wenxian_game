@@ -6,6 +6,7 @@ const centralMapSrc = new URL("../../World_map_zhonzhou2.png", import.meta.url).
 const tianXuanGateSrc = new URL("../../maps/tian_xuan_cheng_meng.png", import.meta.url).href;
 const qingyunTownSrc = new URL("../../scene/qinyun_town.png", import.meta.url).href;
 const liBaicaoSrc = new URL("../../scene/li_baicao.png", import.meta.url).href;
+const blackWindMountainSrc = new URL("../../scene/black_wind_mountain.png", import.meta.url).href;
 
 export const mapImages = {
   world: worldMapSrc,
@@ -25,6 +26,7 @@ export const sceneImages: Record<string, string> = {
   qingyun_town: qingyunTownSrc,
   li_baicao: liBaicaoSrc,
   li_baicao_herbs: liBaicaoSrc,
+  black_wind_mountain: blackWindMountainSrc,
   qingyunGate: "/assets/scenes/qingyun-gate.png",
   groceryShop: "/assets/scenes/grocery-shop.png",
   blackWindMountain: "/assets/scenes/black-wind-mountain.png",

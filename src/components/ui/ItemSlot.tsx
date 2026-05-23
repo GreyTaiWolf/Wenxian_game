@@ -1,6 +1,5 @@
 import { memo, type ReactNode } from "react";
 import { GameIcon, type GameIconName } from "../GameIcon";
-import { GradeBadge } from "./GradeBadge";
 import type { ItemGrade } from "../../types";
 
 export type ItemSlotState = "empty" | "filled" | "selected" | "disabled";
@@ -38,10 +37,9 @@ export const ItemSlot = memo(function ItemSlot({
         {description ? <small>{description}</small> : null}
       </span>
       {amount && amount > 1 ? <span className="item-slot-amount">x{amount}</span> : null}
-      {grade ? <GradeBadge grade={grade} compact /> : null}
     </>
   );
-  const classes = `item-slot item-slot-${state} ${grade ? `grade-card grade-${grade}` : ""} ${className}`.trim();
+  const classes = `item-slot item-slot-${state} ${state} ${grade ? `grade-card grade-${grade}` : ""} ${className}`.trim();
 
   if (isInteractive) {
     return (

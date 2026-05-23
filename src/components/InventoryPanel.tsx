@@ -465,7 +465,7 @@ function ItemDetailCard({
       return;
     }
     onChange(unequipSlot(game, equippedSlotId));
-    notify({ title: "已卸下装备", description: displayName, tone: "success" });
+    notify({ title: "已卸下装备", description: displayName, tone: "success", grade: item.grade });
     onClose();
   }
 
@@ -474,13 +474,13 @@ function ItemDetailCard({
       return;
     }
     onChange(equipEquipmentInstance(game, equipmentInstance.id));
-    notify({ title: replacing ? "已替换装备" : "已装备", description: displayName, tone: "success" });
+    notify({ title: replacing ? "已替换装备" : "已装备", description: displayName, tone: "success", grade: item.grade });
     onClose();
   }
 
   function handleSell() {
     onChange(equipmentInstance ? sellEquipmentInstance(game, equipmentInstance.id) : sellItem(game, item.id));
-    notify({ title: "出售成功", description: `获得 ${formatNumber(sellPrice)} 灵石`, tone: "gold" });
+    notify({ title: "出售成功", description: `获得 ${formatNumber(sellPrice)} 灵石`, tone: "gold", grade: item.grade });
     onClose();
   }
 
@@ -538,7 +538,7 @@ function ItemDetailCard({
         {item.equipment && equipmentBonuses ? (
           <section className="item-detail-section">
             <h3>属性</h3>
-            <div className="item-detail-bonus-grid">
+            <div className="item-detail-bonus-list">
               {formatBonusEntries(equipmentBonuses).map((entry) => (
                 <div key={entry.label}>
                   <span>{entry.label}</span>
@@ -635,7 +635,7 @@ function formatBonusEntries(bonuses?: EquipmentBonus): Array<{ label: string; va
     .filter((key) => Boolean(bonuses[key]))
     .map((key) => ({
       label: statLabels[key],
-      value: `+${formatStatValue(key, bonuses[key] ?? 0)}`,
+      value: formatSignedStatValue(key, bonuses[key] ?? 0),
     }));
 }
 
@@ -643,7 +643,12 @@ function formatBonusValue(key: keyof Stats, value: number): string | null {
   if (value <= 0) {
     return null;
   }
-  return `+${formatStatValue(key, value)}`;
+  return formatSignedStatValue(key, value);
+}
+
+function formatSignedStatValue(key: keyof Stats, value: number): string {
+  const formatted = String(formatStatValue(key, value));
+  return formatted.startsWith("+") || formatted.startsWith("-") ? formatted : `+${formatted}`;
 }
 
 function formatStatValue(key: keyof Stats, value: number): string | number {

@@ -1,15 +1,19 @@
 import { motion } from "motion/react";
 import { GameIcon } from "../GameIcon";
+import type { ItemGrade } from "../../types";
 
 export function RewardToast({
   title,
   detail,
+  grade,
   motionEnabled = true,
 }: {
   title: string;
   detail?: string;
+  grade?: ItemGrade;
   motionEnabled?: boolean;
 }) {
+  const className = `reward-toast ${grade ? `grade-card grade-${grade}` : ""}`.trim();
   const content = (
     <>
       <GameIcon name="item" size={18} />
@@ -21,12 +25,12 @@ export function RewardToast({
   );
 
   if (!motionEnabled) {
-    return <div className="reward-toast">{content}</div>;
+    return <div className={className}>{content}</div>;
   }
 
   return (
     <motion.div
-      className="reward-toast"
+      className={className}
       initial={{ opacity: 0, y: 10, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8 }}

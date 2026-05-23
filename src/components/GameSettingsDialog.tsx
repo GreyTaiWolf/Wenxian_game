@@ -202,7 +202,12 @@ export function GameSettingsDialog({ game, open, onOpenChange, onExitToMenu }: G
     }
 
     updateGame((currentGame) => appendLog(addItems(currentGame, [{ itemId: itemConfig.id, amount }]), `Debug：获得 ${formatItemName(itemConfig)} x${amount}。`));
-    notify({ title: "已加入背包", description: `${formatItemName(itemConfig)} x${amount}`, tone: itemConfig.equipment ? "gold" : "success" });
+    notify({
+      title: "已加入背包",
+      description: `${formatItemName(itemConfig)} x${amount}`,
+      tone: itemConfig.equipment ? "gold" : "success",
+      grade: itemConfig.grade,
+    });
   }
 
   function applySectDebug() {

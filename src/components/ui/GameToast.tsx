@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import { Toast } from "radix-ui";
 import { useUiStore, type GameToastTone } from "../../stores/uiStore";
+import type { ItemGrade } from "../../types";
 
 export interface GameToastInput {
   title: string;
   description?: string;
   tone?: GameToastTone;
+  grade?: ItemGrade;
 }
 
 export function GameToastProvider({
@@ -24,7 +26,7 @@ export function GameToastProvider({
       {messages.map((toast) => (
         <Toast.Root
           key={toast.id}
-          className={`game-toast game-toast-${toast.tone} ${motionEnabled ? "toast-motion-on" : "toast-motion-off"}`.trim()}
+          className={`game-toast game-toast-${toast.tone} ${toast.grade ? `game-toast-grade grade-card grade-${toast.grade}` : ""} ${motionEnabled ? "toast-motion-on" : "toast-motion-off"}`.trim()}
           defaultOpen
           onOpenChange={(open) => {
             if (!open) {

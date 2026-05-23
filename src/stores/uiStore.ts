@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { EquipmentSlotId, PrimaryModule } from "../types";
+import type { EquipmentSlotId, ItemGrade, PrimaryModule } from "../types";
 
 export type AppScreen = "menu" | "game";
 export type InventoryTab = "equipment" | "items" | "pills" | "materials";
@@ -12,6 +12,7 @@ export interface GameToastMessage {
   title: string;
   description?: string;
   tone: GameToastTone;
+  grade?: ItemGrade;
 }
 
 export interface CultivationUiState {

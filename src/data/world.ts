@@ -42,6 +42,13 @@ export interface LocationSceneHotspot {
   title?: string;
 }
 
+export interface LocationSceneBlockedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface SceneNode {
   id: string;
   name: string;
@@ -59,6 +66,7 @@ export interface LocationNode {
   description: string;
   sceneMapImageKey?: string;
   sceneMapHotspots?: LocationSceneHotspot[];
+  sceneMapBlockedRects?: LocationSceneBlockedRect[];
   scenes: SceneNode[];
 }
 
@@ -205,13 +213,13 @@ export const regions: RegionNode[] = [
         sceneMapImageKey: "qingyun_town",
         sceneMapHotspots: [
           { id: "qingyun_shop_marker", label: "小小仙铺", sceneId: "xiaoxiao_shop", x: 48.81, y: 36.96, title: "杂货" },
-          { id: "zhao_refinery_marker", label: "赵家炼器铺", sceneId: "zhao_refinery", x: 28, y: 64, title: "炼器" },
+          { id: "zhao_refinery_marker", label: "赵家炼器铺", sceneId: "zhao_refinery", x: 53.57, y: 58.7, title: "炼器" },
           { id: "chen_banxian_marker", label: "陈半仙", sceneId: "chen_banxian_stall", x: 41.67, y: 54.35, title: "秘籍摊" },
           { id: "li_baicao_marker", label: "李百草", sceneId: "li_baicao_herbs", x: 29.76, y: 50, title: "草药铺" },
           { id: "city_manor_marker", label: "城主府", sceneId: "city_manor", x: 60, y: 39, title: "府衙" },
           { id: "notice_board_marker", label: "公告栏", sceneId: "notice_board", x: 63.1, y: 23.91, title: "任务" },
           { id: "qingyun_inn_marker", label: "青云客栈", sceneId: "qingyun_inn", x: 72.62, y: 50, title: "客栈" },
-          { id: "inn_spirit_field_marker", label: "灵田", sceneId: "inn_spirit_field", x: 57, y: 84, title: "客栈灵田" },
+          { id: "inn_spirit_field_marker", label: "灵田", sceneId: "inn_spirit_field", x: 79.76, y: 54.35, title: "客栈灵田" },
         ],
         scenes: [
           {
@@ -363,7 +371,57 @@ export const regions: RegionNode[] = [
         name: "黑风山",
         type: "wild",
         description: "山路狭窄，林间常有妖兽伏击，也有妖修借黑雾遮身。",
+        sceneMapImageKey: "black_wind_mountain",
+        sceneMapHotspots: [
+          { id: "black_spirit_spring_marker", label: "黑灵泉", sceneId: "black_spirit_spring", x: 48.81, y: 45.65, title: "灵泉" },
+          { id: "mojin_cave_marker", label: "墨金洞", sceneId: "mojin_cave", x: 79.76, y: 76.09, title: "洞窟" },
+          { id: "black_wind_demon_stockade_marker", label: "黑风妖寨", sceneId: "black_wind_demon_stockade", x: 84.52, y: 45.65, title: "妖寨" },
+        ],
+        sceneMapBlockedRects: [
+          { x: 0, y: 0, width: 5, height: 23 },
+          { x: 5, y: 0, width: 8, height: 4 },
+          { x: 13, y: 0, width: 5, height: 2 },
+          { x: 22, y: 0, width: 11, height: 7 },
+          { x: 34, y: 0, width: 8, height: 6 },
+          { x: 0, y: 9, width: 7, height: 5 },
+          { x: 10, y: 8, width: 6, height: 6 },
+          { x: 24, y: 7, width: 7, height: 2 },
+          { x: 28, y: 9, width: 3, height: 5 },
+          { x: 38, y: 8, width: 4, height: 5 },
+          { x: 0, y: 17, width: 13, height: 6 },
+          { x: 15, y: 14, width: 7, height: 9 },
+          { x: 22, y: 18, width: 6, height: 5 },
+          { x: 30, y: 18, width: 12, height: 5 },
+        ],
         scenes: [
+          {
+            id: "black_spirit_spring",
+            name: "黑灵泉",
+            type: "灵泉",
+            description: "石台中央的泉水泛着冷青灵光，黑雾贴着水面游走，像在吞吐山腹灵气。",
+            actions: [
+              {
+                id: "inspect_black_spirit_spring",
+                label: "探查黑灵泉",
+                kind: "dialogue",
+                text: "泉眼灵气清冷，却混着淡淡妖煞。你暂且记下此处，等修为更稳再深入汲取。",
+              },
+            ],
+          },
+          {
+            id: "mojin_cave",
+            name: "墨金洞",
+            type: "洞窟战斗",
+            description: "洞口石阶湿冷，黑金色矿脉在雾里若隐若现，洞内传来山狼低吼。",
+            actions: [{ id: "fight_mojin_cave_wolves", label: "清剿洞中妖狼", kind: "combat", targetId: "wolf_pack" }],
+          },
+          {
+            id: "black_wind_demon_stockade",
+            name: "黑风妖寨",
+            type: "妖修战斗",
+            description: "乱木搭成的妖寨插满破旗，火堆边有妖修巡守，黑风绕寨不散。",
+            actions: [{ id: "fight_black_wind_stockade", label: "攻入黑风妖寨", kind: "combat", targetId: "black_wind_duo" }],
+          },
           {
             id: "mountain_path",
             name: "山道",
