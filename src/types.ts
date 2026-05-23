@@ -269,6 +269,7 @@ export interface WorldState {
   sectContribution: number;
   sectReputation: number;
   tasks: Record<string, QuestState>;
+  eventFlags: string[];
   logs: string[];
   sceneMessage: string;
   calendar: {
