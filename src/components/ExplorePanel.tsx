@@ -3,15 +3,17 @@ import {
   WORLD_GRID_MAP_ID,
   getDefaultGridCoord,
   getGridMapData,
-  getRegionGridMapId,
-  getRegionLocationGridCoord,
-  getWorldProvincePortalCoord,
+  getLocalGridMapId,
+  getLocalSceneGridCoord,
+  getLocationIdFromLocalGridMapId,
+  getWorldPoiGridCoord,
   gridMaps,
 } from "../data/gridMaps";
 import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZones, gridDestinationZones } from "../data/gridMapZones";
-import { REGION_TILE_MOVE_DAYS, WORLD_TILE_MOVE_DAYS } from "../data/time";
-import { formatItemName, shouldEmphasizeItemGrade } from "../data/items";
-import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
+import { COMBAT_ACTION_HOURS, GATHER_ACTION_HOURS, TREASURE_ACTION_HOURS, getGridMoveHours } from "../data/time";
+import { getEnemyGroup } from "../data/enemies";
+import { getWorldEvent } from "../data/events";
+import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import {
   getLocation,
   getRegion,
@@ -25,8 +27,7 @@ import {
   type SceneNode,
   type ShopConfig,
 } from "../data/world";
-import { getWorldProvince, worldProvinces, type WorldProvince } from "../data/worldMap";
-import { getSceneImage, mapImages, regionMapImages } from "../data/assets";
+import { getWorldPoi, getWorldPoiByLocationId, worldPois, type WorldPoiConfig } from "../data/worldPois";
 import { beginCombat, grantGatherReward, grantTreasure } from "../game/combatEngine";
 import { dismissActiveWorldEvent, getActiveWorldEvent, maybeTriggerMapEvent, resolveWorldEventChoice } from "../game/events";
 import {
@@ -43,11 +44,11 @@ import {
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
 import { buyShopItem, getShopDisplayItems, getShopRefreshInfo } from "../game/shop";
 import { advanceTime } from "../game/time";
-import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
+import type { GameState, GridCell, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
 import { useActiveGame, useSettings, useUpdateGame } from "../stores/gameStore";
-import { defaultMapViewport, useMapUiStore, type ActiveTravel, type LocationTravelIntent, type TravelIntent } from "../stores/mapUiStore";
+import { defaultMapViewport, useMapUiStore, type ActiveTravel, type MapViewportState, type TravelIntent } from "../stores/mapUiStore";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
-import { NpcDialogueSheet, SceneHotspot, SceneView, type SceneHotspotDialogueAction, type SceneHotspotModel } from "./scene";
+import { NpcDialogueSheet, SceneView, type SceneHotspotDialogueAction, type SceneHotspotModel } from "./scene";
 import { BottomSheet, GradeBadge } from "./ui";
 
 const GRID_MOVEMENT_STEP_MS = 180;
@@ -55,6 +56,13 @@ const LOCATION_SCENE_GRID_WIDTH = 42;
 const LOCATION_SCENE_GRID_HEIGHT = 23;
 const LOCATION_SCENE_ASPECT_RATIO = LOCATION_SCENE_GRID_WIDTH / LOCATION_SCENE_GRID_HEIGHT;
 const SCENE_DETAIL_MAP_ASPECT_RATIO = 3 / 2;
+const GRID_MAP_MAX_SCALE = 12;
+const GRID_MAP_VISIBLE_PADDING = 4;
+const GRID_MAP_EDGE_PADDING = 28;
+const GRID_MAP_WHEEL_ZOOM_FACTOR = 1.18;
+const GRID_MAP_BUTTON_ZOOM_FACTOR = 1.32;
+type GridViewportSize = { width: number; height: number };
+type GridVisibleRect = { left: number; top: number; right: number; bottom: number };
 type ExploreChange = (next: GameState | ((prev: GameState) => GameState)) => void;
 
 export default function ExplorePanel() {
@@ -62,15 +70,13 @@ export default function ExplorePanel() {
   const onChange = useUpdateGame();
   const settings = useSettings();
   const view = useMapUiStore((state) => state.view);
-  const selectedProvinceId = useMapUiStore((state) => state.selectedProvinceId);
-  const selectedRegionMarkerId = useMapUiStore((state) => state.selectedRegionMarkerId);
+  const selectedWorldPoiId = useMapUiStore((state) => state.selectedWorldPoiId);
   const activeSceneHotspotId = useMapUiStore((state) => state.activeSceneHotspotId);
   const debugOpen = useMapUiStore((state) => state.debugOpen);
   const debugResult = useMapUiStore((state) => state.debugResult);
   const travel = useMapUiStore((state) => state.travel);
   const setView = useMapUiStore((state) => state.setView);
-  const setSelectedProvinceId = useMapUiStore((state) => state.setSelectedProvinceId);
-  const setSelectedRegionMarkerId = useMapUiStore((state) => state.setSelectedRegionMarkerId);
+  const setSelectedWorldPoiId = useMapUiStore((state) => state.setSelectedWorldPoiId);
   const setActiveSceneHotspotId = useMapUiStore((state) => state.setActiveSceneHotspotId);
   const toggleDebug = useMapUiStore((state) => state.toggleDebug);
   const setDebugResult = useMapUiStore((state) => state.setDebugResult);
@@ -85,12 +91,9 @@ export default function ExplorePanel() {
   const region = getRegion(game.world.regionId);
   const location = getLocation(game.world.regionId, game.world.locationId);
   const scene = getScene(game.world.regionId, game.world.locationId, game.world.sceneId);
-  const sceneImage = getSceneImage(scene.imageKey);
-  const locationSceneMapImage = getSceneImage(location.sceneMapImageKey);
   const activeSceneHotspot = scene.hotspots?.find((hotspot) => hotspot.id === activeSceneHotspotId) ?? null;
-  const selectedProvince = selectedProvinceId ? getWorldProvince(selectedProvinceId) : null;
-  const currentProvince = getWorldProvince(game.world.regionId);
-  const regionMap = getRegionMapConfig(game.world.regionId);
+  const selectedWorldPoi = selectedWorldPoiId ? getWorldPoi(selectedWorldPoiId) ?? null : null;
+  const currentWorldPoi = getWorldPoiByLocationId(game.world.locationId);
 
   useEffect(() => {
     setActiveSceneHotspotId(null);
@@ -111,8 +114,10 @@ export default function ExplorePanel() {
       const [nextStep, ...remainingPath] = travel.path;
       onChange((currentGame) => {
         const movedGame = updateNavigationPosition(currentGame, travel.mapId, nextStep);
-        const stepDays = travel.mapId === WORLD_GRID_MAP_ID ? WORLD_TILE_MOVE_DAYS : REGION_TILE_MOVE_DAYS;
-        return advanceTime(movedGame, stepDays);
+        const mapData = getGridMapData(travel.mapId);
+        const stepCell = mapData ? getGridCell(mapData, nextStep) : undefined;
+        const stepHours = mapData ? getGridMoveHours(mapData, stepCell) : 0;
+        return advanceTime(movedGame, { hours: stepHours });
       });
       setTravel({ ...travel, path: remainingPath });
     }, GRID_MOVEMENT_STEP_MS);
@@ -155,67 +160,41 @@ export default function ExplorePanel() {
     });
   }
 
-  function enterProvince(province: WorldProvince) {
-    if (!province.open || !province.regionId) {
-      return;
-    }
+  function travelToWorldPoi(poi: WorldPoiConfig) {
     const map = getGridMapData(WORLD_GRID_MAP_ID);
-    const currentCoord = getNavigationCoord(game, WORLD_GRID_MAP_ID);
-    const targetCell = map ? getGridCell(map, currentCoord) : undefined;
-    setSelectedProvinceId(null);
-    setSelectedRegionMarkerId(null);
-    setView("region");
-    onChange((currentGame) => applyProvinceTravelChange(currentGame, province, targetCell));
-  }
-
-  function travelToProvinceMarker(province: WorldProvince) {
-    const map = getGridMapData(WORLD_GRID_MAP_ID);
-    const zone = getGridDestinationZone(WORLD_GRID_MAP_ID, "province", province.id);
+    const zone = getGridDestinationZone(WORLD_GRID_MAP_ID, "poi", poi.id);
     const zoneTarget = map && zone ? getNearestWalkableZoneCoord(map, zone, getNavigationCoord(game, WORLD_GRID_MAP_ID)) : null;
-    const portalCoord = province.regionId ? getWorldProvincePortalCoord(province.regionId) : undefined;
-    const target = zoneTarget ?? portalCoord;
+    const target = zoneTarget ?? getWorldPoiGridCoord(poi.id);
     if (!target) {
       return;
     }
-    setSelectedProvinceId(null);
-    setSelectedRegionMarkerId(null);
-    startTravel(WORLD_GRID_MAP_ID, target, { kind: "province", province });
+    setSelectedWorldPoiId(null);
+    startTravel(WORLD_GRID_MAP_ID, target, { kind: "worldPoiPreview", poiId: poi.id });
   }
 
-  function setLocation(locationId: string) {
-    const regionMapId = getRegionGridMapId(game.world.regionId);
-    const map = regionMapId ? getGridMapData(regionMapId) : undefined;
-    const zone = regionMapId ? getGridDestinationZone(regionMapId, "location", locationId) : undefined;
-    const zoneTarget = map && zone ? getNearestWalkableZoneCoord(map, zone, getNavigationCoord(game, map.mapId)) : null;
-    const locationCoord = getRegionLocationGridCoord(game.world.regionId, locationId);
-    const target = zoneTarget ?? locationCoord;
-    if (regionMapId && target) {
-      startTravel(regionMapId, target, { kind: "location", regionId: game.world.regionId, locationId });
+  function enterWorldPoi(poi: WorldPoiConfig) {
+    if (!poi.open || !poi.locationId) {
+      onChange((currentGame) => appendLog(currentGame, `${poi.name}尚未开放，灵雾遮住了深入路径。`));
       return;
     }
-    onChange(applyLocationChange(game, locationId));
+    setSelectedWorldPoiId(null);
+    setActiveSceneHotspotId(null);
     setView("location");
+    onChange((currentGame) => applyWorldPoiEnterChange(currentGame, poi));
   }
 
-  function travelToLocationMarker(locationId: string) {
-    const regionMapId = getRegionGridMapId(game.world.regionId);
-    const map = regionMapId ? getGridMapData(regionMapId) : undefined;
-    const zone = regionMapId ? getGridDestinationZone(regionMapId, "location", locationId) : undefined;
+  function travelToLocalScene(sceneId: string) {
+    const localMapId = getLocalGridMapId(game.world.locationId);
+    const map = localMapId ? getGridMapData(localMapId) : undefined;
+    const zone = localMapId ? getGridDestinationZone(localMapId, "scene", sceneId) : undefined;
     const zoneTarget = map && zone ? getNearestWalkableZoneCoord(map, zone, getNavigationCoord(game, map.mapId)) : null;
-    const locationCoord = getRegionLocationGridCoord(game.world.regionId, locationId);
-    const target = zoneTarget ?? locationCoord;
-    if (regionMapId && target) {
-      setSelectedRegionMarkerId(null);
-      startTravel(regionMapId, target, { kind: "locationPreview", regionId: game.world.regionId, locationId });
+    const sceneCoord = getLocalSceneGridCoord(game.world.locationId, sceneId);
+    const target = zoneTarget ?? sceneCoord;
+    if (localMapId && target) {
+      startTravel(localMapId, target, { kind: "localScene", locationId: game.world.locationId, sceneId });
       return;
     }
-    setSelectedRegionMarkerId(locationId);
-  }
-
-  function enterLocation(locationId: string) {
-    setSelectedRegionMarkerId(null);
-    onChange(applyLocationChange(game, locationId));
-    setView("location");
+    setScene(sceneId);
   }
 
   function setScene(sceneId: string) {
@@ -251,22 +230,34 @@ export default function ExplorePanel() {
     const map = getGridMapData(doneTravel.mapId);
     const targetZone = map ? findGridDestinationZone(doneTravel.mapId, doneTravel.target) : null;
 
-    if (doneTravel.intent.kind === "province") {
-      const province = doneTravel.intent.province;
-      if (province) {
-        setSelectedProvinceId(province.id);
-        setSelectedRegionMarkerId(null);
+    if (doneTravel.intent.kind === "worldPoiPreview") {
+      const poi = getWorldPoi(doneTravel.intent.poiId);
+      if (poi) {
+        setSelectedWorldPoiId(poi.id);
         setView("world");
         onChange((currentGame) =>
           applyArrivalEvent(
             appendLog(
-            updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
-            `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${province.name}地界，已展开州域信息。`,
-          ),
+              updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
+              `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${poi.name}周边，已展开地点预览。`,
+            ),
             doneTravel,
           ),
         );
       }
+      return;
+    }
+
+    if (doneTravel.intent.kind === "localScene") {
+      const sceneId = doneTravel.intent.sceneId;
+      setView("location");
+      setActiveSceneHotspotId(null);
+      onChange((currentGame) =>
+        applyArrivalEvent(
+          applySceneChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), sceneId),
+          doneTravel,
+        ),
+      );
       return;
     }
 
@@ -278,101 +269,96 @@ export default function ExplorePanel() {
     }
 
     if (doneTravel.intent.kind === "locationPreview") {
-      const targetLocation = getLocation(doneTravel.intent.regionId, doneTravel.intent.locationId);
-      setSelectedRegionMarkerId(targetLocation.id);
-      setView("region");
+      const poi = getWorldPoiByLocationId(doneTravel.intent.locationId);
+      if (poi) {
+        setSelectedWorldPoiId(poi.id);
+        setView("world");
+        onChange((currentGame) =>
+          applyArrivalEvent(
+            appendLog(
+              updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
+              `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${poi.name}周边，已展开地点预览。`,
+            ),
+            doneTravel,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (targetZone?.kind === "poi") {
+      const poi = getWorldPoi(targetZone.targetId);
+      if (poi) {
+        setSelectedWorldPoiId(poi.id);
+        setView("world");
+        onChange((currentGame) =>
+          applyArrivalEvent(
+            appendLog(
+              updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
+              `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${poi.name}周边，已展开地点预览。`,
+            ),
+            doneTravel,
+          ),
+        );
+        return;
+      }
+    }
+
+    if (targetZone?.kind === "scene") {
+      setView("location");
+      setActiveSceneHotspotId(null);
       onChange((currentGame) =>
         applyArrivalEvent(
-          appendLog(
-          updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
-          `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${targetLocation.name}周边，已展开地点信息。`,
-        ),
+          applySceneChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), targetZone.targetId),
           doneTravel,
         ),
       );
       return;
     }
 
-    if (targetZone?.kind === "province") {
-      const province = worldProvinces.find((item) => item.id === targetZone.targetId);
-      if (province) {
-        setSelectedProvinceId(province.id);
-        setView("world");
-        onChange((currentGame) =>
-          applyArrivalEvent(
-            appendLog(
-            updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
-            `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${province.name}地界，已展开州域信息。`,
-          ),
-            doneTravel,
-          ),
-        );
-        return;
-      }
-    }
-
-    if (targetZone?.kind === "location") {
-      const regionId = getRegionIdFromGridMapId(doneTravel.mapId) ?? game.world.regionId;
-      const targetLocation = getRegion(regionId).locations.find((item) => item.id === targetZone.targetId);
-      if (targetLocation) {
-        setSelectedRegionMarkerId(targetLocation.id);
-        setView("region");
-        onChange((currentGame) =>
-          applyArrivalEvent(
-            appendLog(
-            updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
-            `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${targetLocation.name}周边，已展开地点信息。`,
-          ),
-            doneTravel,
-          ),
-        );
-        return;
-      }
-    }
-
     onChange((currentGame) =>
       applyArrivalEvent(
         appendLog(
-        updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
-        doneTravel.adjusted ? "目标落在险阻处，你已抵达附近最近的可走格。" : "你沿着灵路抵达目标格。",
-      ),
+          updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
+          doneTravel.adjusted ? "目标落在险阻处，你已抵达附近最近的可走格。" : "你沿着灵路抵达目标格。",
+        ),
         doneTravel,
       ),
     );
   }
 
   const worldMapData = getGridMapData(WORLD_GRID_MAP_ID);
-  const regionMapData = getRegionGridMapId(game.world.regionId) ? getGridMapData(getRegionGridMapId(game.world.regionId) ?? "") : undefined;
+  const localMapId = getLocalGridMapId(game.world.locationId);
+  const localMapData = localMapId ? getGridMapData(localMapId) : undefined;
 
   return (
     <section className="module-panel explore-panel">
       {view === "world" && worldMapData ? (
-        <WorldMapView
+        <GridMapPanel
+          mode="world"
           mapData={worldMapData}
           game={game}
           travel={travel}
           debugOpen={debugOpen}
           debugResult={debugResult}
-          selectedProvince={selectedProvince}
+          selectedWorldPoi={selectedWorldPoi}
           onToggleDebug={toggleDebug}
           onRunSelfTest={runSelfTest}
           onMapTarget={(coord) => {
-            setSelectedProvinceId(null);
-            setSelectedRegionMarkerId(null);
+            setSelectedWorldPoiId(null);
             startTravel(WORLD_GRID_MAP_ID, coord, { kind: "free" });
           }}
-          onSelectProvince={travelToProvinceMarker}
-          onCloseProvince={() => setSelectedProvinceId(null)}
-          onEnterProvince={enterProvince}
+          onSelectWorldPoi={travelToWorldPoi}
+          onCloseWorldPoi={() => setSelectedWorldPoiId(null)}
+          onEnterWorldPoi={enterWorldPoi}
         />
-      ) : view === "region" ? (
+      ) : (
         <>
           <div className="location-header">
             <button
               className="ghost-button"
               onClick={() => {
-                setSelectedProvinceId(null);
-                setSelectedRegionMarkerId(null);
+                setSelectedWorldPoiId(currentWorldPoi?.id ?? null);
                 setView("world");
               }}
             >
@@ -381,111 +367,63 @@ export default function ExplorePanel() {
             </button>
             <div>
               <h2>
-                <GameIcon name="module-explore" size={18} />
-                {region.name}地图
-              </h2>
-              <span>{region.locations.length} 处地点</span>
-            </div>
-          </div>
-
-          <article className="scene-card">
-            <p className="muted">{currentProvince.description}</p>
-            {regionMap && regionMapData ? (
-              <RegionImageMapView
-                mapData={regionMapData}
-                game={game}
-                travel={travel}
-                debugOpen={debugOpen}
-                debugResult={debugResult}
-                config={regionMap}
-                regionName={region.name}
-                currentLocationId={location.id}
-                selectedMarkerId={selectedRegionMarkerId}
-                locations={region.locations}
-                onToggleDebug={toggleDebug}
-                onRunSelfTest={runSelfTest}
-                onMapTarget={(coord) => {
-                  setSelectedRegionMarkerId(null);
-                  startTravel(regionMapData.mapId, coord, { kind: "free" });
-                }}
-                onSelectMarker={travelToLocationMarker}
-                onCloseMarker={() => setSelectedRegionMarkerId(null)}
-                onEnterLocation={enterLocation}
-              />
-            ) : (
-              <div className="location-grid">
-                {region.locations.map((item) => (
-                  <button className={item.id === location.id ? "active" : ""} key={item.id} onClick={() => setLocation(item.id)}>
-                    <GameIcon name={getLocationIconName(item.type)} size={17} />
-                    <strong>{item.name}</strong>
-                    <small>{getLocationTypeLabel(item.type)}</small>
-                    <span>{item.description}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </article>
-        </>
-      ) : (
-        <>
-          <div className="location-header">
-            <button className="ghost-button" onClick={() => setView("region")}>
-              <GameIcon name="action-back" size={15} />
-              返回{region.name}
-            </button>
-            <div>
-              <h2>
                 <GameIcon name={getLocationIconName(location.type)} size={18} />
                 {location.name}
               </h2>
-              <span>{getLocationTypeLabel(location.type)}</span>
+              <span>
+                local map / {currentWorldPoi?.regionTag ?? region.name} / {getLocationTypeLabel(location.type)}
+              </span>
             </div>
           </div>
 
-          {locationSceneMapImage && location.sceneMapHotspots ? (
-            <LocationSceneImageMap
-              currentScene={scene}
+          {localMapData ? (
+            <GridMapPanel
+              mode="local"
+              mapData={localMapData}
               game={game}
-              hotspots={location.sceneMapHotspots}
-              imageSrc={locationSceneMapImage}
+              travel={travel}
+              debugOpen={debugOpen}
+              debugResult={debugResult}
               location={location}
-              onChange={onChange}
-              onSceneHotspotSelect={openSceneHotspot}
-              onSelectScene={setScene}
+              currentScene={scene}
+              onToggleDebug={toggleDebug}
+              onRunSelfTest={runSelfTest}
+              onMapTarget={(coord) => {
+                startTravel(localMapData.mapId, coord, { kind: "free" });
+              }}
+              onSelectScene={travelToLocalScene}
             />
-          ) : (
-            <article className="scene-card">
-              <p className="muted">{location.description}</p>
-              <div className="inner-map-grid">
-                {location.scenes.map((item) => (
-                  <button className={item.id === scene.id ? "active" : ""} key={item.id} onClick={() => setScene(item.id)}>
-                    <GameIcon name={getSceneIconName(item.type)} size={16} />
-                    <strong>{item.name}</strong>
-                    <small>{item.type}</small>
-                  </button>
-                ))}
-              </div>
-              <div className="scene-detail">
-                <SceneView
-                  name={scene.name}
-                  type={scene.type}
-                  description={scene.description}
-                  imageSrc={sceneImage}
-                  hotspots={scene.hotspots}
-                  feedback={game.world.sceneMessage}
-                  onHotspotSelect={openSceneHotspot}
-                  actions={<SceneActionButtons actions={scene.actions} game={game} onChange={onChange} />}
-                />
-              </div>
-            </article>
-          )}
+          ) : null}
 
-          {!(locationSceneMapImage && location.sceneMapHotspots) && scene.actions.some((action) => action.kind === "shop") ? (
-            <Shop game={game} onChange={onChange} shopId={scene.id} />
-          ) : null}
-          {!(locationSceneMapImage && location.sceneMapHotspots) && scene.actions.some((action) => action.kind === "taskBoard") ? (
-            <TaskBoard game={game} onChange={onChange} />
-          ) : null}
+          <LocationIntelCard location={location} />
+
+          <article className="scene-card scene-card-no-image">
+            <p className="muted">{location.description}</p>
+            <div className="inner-map-grid">
+              {location.scenes.map((item) => (
+                <button className={item.id === scene.id ? "active" : ""} key={item.id} onClick={() => travelToLocalScene(item.id)}>
+                  <GameIcon name={getSceneIconName(item.type)} size={16} />
+                  <strong>{item.name}</strong>
+                  <small>{item.type}</small>
+                </button>
+              ))}
+            </div>
+            <div className="scene-detail">
+              <SceneView
+                name={scene.name}
+                type={scene.type}
+                description={scene.description}
+                imageSrc={null}
+                hotspots={scene.hotspots}
+                feedback={game.world.sceneMessage}
+                onHotspotSelect={openSceneHotspot}
+                actions={<SceneActionButtons actions={scene.actions} game={game} onChange={onChange} />}
+              />
+            </div>
+          </article>
+
+          {scene.actions.some((action) => action.kind === "shop") ? <Shop game={game} onChange={onChange} shopId={scene.id} /> : null}
+          {scene.actions.some((action) => action.kind === "taskBoard") ? <TaskBoard game={game} onChange={onChange} /> : null}
           <NpcDialogueSheet
             open={Boolean(activeSceneHotspot)}
             hotspot={activeSceneHotspot}
@@ -513,6 +451,44 @@ export default function ExplorePanel() {
       )}
       <MapEventSheet game={game} motionEnabled={settings.motion} onChange={onChange} />
     </section>
+  );
+}
+
+function LocationIntelCard({ location }: { location: LocationNode }) {
+  const eventNames = (location.eventPoolIds ?? []).map((eventId) => getWorldEvent(eventId)?.title ?? eventId);
+  const enemyNames = (location.enemyPoolIds ?? []).map((enemyId) => getEnemyGroup(enemyId).title);
+  const dropNames = (location.dropPool ?? []).map((drop) => `${formatItemName(getItem(drop.itemId))} x${drop.amount}`);
+  const npcCount = location.npcIds?.length ?? 0;
+  const taskCount = location.taskIds?.length ?? 0;
+  const hasIntel = eventNames.length || enemyNames.length || dropNames.length || npcCount || taskCount || location.backgroundImageKey || location.resourceKey;
+
+  if (!hasIntel) {
+    return null;
+  }
+
+  return (
+    <section className="location-intel-card">
+      <div>
+        <span>地点档案</span>
+        <strong>{location.chapterId === "chapter_01_qingyun_black_wind" ? "第一章主循环" : "区域内容"}</strong>
+      </div>
+      <div className="location-intel-grid">
+        <IntelLine label="资源" value={location.resourceKey ?? location.backgroundImageKey ?? "未配置"} />
+        <IntelLine label="事件" value={eventNames.length ? eventNames.join(" / ") : "无随机事件"} />
+        <IntelLine label="敌人" value={enemyNames.length ? enemyNames.join(" / ") : "安全区域"} />
+        <IntelLine label="掉落" value={dropNames.length ? dropNames.join(" / ") : "无常规掉落"} />
+        <IntelLine label="入口" value={`${npcCount} NPC / ${taskCount} 任务`} />
+      </div>
+    </section>
+  );
+}
+
+function IntelLine({ label, value }: { label: string; value: string }) {
+  return (
+    <p>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </p>
   );
 }
 
@@ -590,7 +566,7 @@ function LocationSceneImageMap({
   const markerScale = 1 / scale;
   const hasShop = currentScene.actions.some((action) => action.kind === "shop");
   const hasTaskBoard = currentScene.actions.some((action) => action.kind === "taskBoard");
-  const currentSceneImage = getSceneImage(currentScene.imageKey);
+  const currentSceneImage: string | null = null;
 
   useEffect(() => {
     if (!currentSceneImage) {
@@ -715,7 +691,10 @@ function LocationSceneImageMap({
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={imageSrc} alt={`${location.name}场景图`} draggable={false} loading="lazy" />
+          <div className="scene-image-fallback location-scene-map-fallback">
+            <strong>{location.name}</strong>
+            <span>{currentScene.description}</span>
+          </div>
           {sceneGridOpen ? <LocationSceneGridOverlay blockedRects={location.sceneMapBlockedRects ?? []} /> : null}
           {hotspots.map((hotspot) => (
             <button
@@ -724,11 +703,9 @@ function LocationSceneImageMap({
               key={hotspot.id}
               onClick={(event) => {
                 event.stopPropagation();
-                const nextScene = location.scenes.find((item) => item.id === hotspot.sceneId);
-                const nextSceneImage = getSceneImage(nextScene?.imageKey);
                 onSelectScene(hotspot.sceneId);
-                setDetailMapOpen(Boolean(nextSceneImage));
-                setDrawerOpen(!nextSceneImage);
+                setDetailMapOpen(false);
+                setDrawerOpen(true);
               }}
               onPointerDown={stopMapGesture}
               onPointerMove={(event) => event.stopPropagation()}
@@ -907,10 +884,20 @@ function SceneDetailImageMap({
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={imageSrc} alt={`${scene.name}地图`} draggable={false} loading="lazy" />
-          {scene.hotspots?.map((hotspot) => (
-            <SceneHotspot key={hotspot.id} hotspot={hotspot} onSelect={onSceneHotspotSelect} />
-          ))}
+          <div className="scene-image-fallback location-scene-map-fallback">
+            <strong>{scene.name}</strong>
+            <span>{scene.description}</span>
+          </div>
+          {scene.hotspots?.length ? (
+            <div className="scene-hotspot-list scene-detail-hotspot-list">
+              {scene.hotspots.map((hotspot) => (
+                <button className={`scene-hotspot-list-button hotspot-${hotspot.type ?? "action"}`} key={hotspot.id} onClick={() => onSceneHotspotSelect(hotspot)} type="button">
+                  <span>{hotspot.label}</span>
+                  {hotspot.title ?? hotspot.text ? <small>{hotspot.title ?? hotspot.text}</small> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -987,47 +974,62 @@ function SceneActionButtons({ actions, game, onChange }: { actions: SceneAction[
   return (
     <div className="action-grid">
       {actions.map((action) => (
-        <button key={action.id} onClick={() => onChange(handleAction(game, action))}>
+        <button className={`scene-action-card action-${action.kind}`} key={action.id} onClick={() => onChange(handleAction(game, action))}>
           <GameIcon name={getActionIconName(action.kind)} size={16} />
-          {action.label}
+          <span>{action.label}</span>
         </button>
       ))}
     </div>
   );
 }
 
-function WorldMapView({
+function GridMapPanel({
+  mode,
   mapData,
   game,
   travel,
   debugOpen,
   debugResult,
-  selectedProvince,
+  selectedWorldPoi,
+  location,
+  currentScene,
   onToggleDebug,
   onRunSelfTest,
   onMapTarget,
-  onSelectProvince,
-  onCloseProvince,
-  onEnterProvince,
+  onSelectWorldPoi,
+  onCloseWorldPoi,
+  onEnterWorldPoi,
+  onSelectScene,
 }: {
+  mode: "world" | "local";
   mapData: GridMapData;
   game: GameState;
   travel: ActiveTravel | null;
   debugOpen: boolean;
   debugResult: string | null;
-  selectedProvince: WorldProvince | null;
+  selectedWorldPoi?: WorldPoiConfig | null;
+  location?: LocationNode;
+  currentScene?: SceneNode;
   onToggleDebug: () => void;
   onRunSelfTest: () => void;
   onMapTarget: (coord: GridCoord) => void;
-  onSelectProvince: (province: WorldProvince) => void;
-  onCloseProvince: () => void;
-  onEnterProvince: (province: WorldProvince) => void;
+  onSelectWorldPoi?: (poi: WorldPoiConfig) => void;
+  onCloseWorldPoi?: () => void;
+  onEnterWorldPoi?: (poi: WorldPoiConfig) => void;
+  onSelectScene?: (sceneId: string) => void;
 }) {
-  const viewport = useMapUiStore((state) => state.viewportByMapId[mapData.mapId] ?? defaultMapViewport);
+  const storedViewport = useMapUiStore((state) => state.viewportByMapId[mapData.mapId]);
   const setMapViewport = useMapUiStore((state) => state.setMapViewport);
-  const resetMapViewport = useMapUiStore((state) => state.resetMapViewport);
   const [dragStart, setDragStart] = useState<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
   const [didDrag, setDidDrag] = useState(false);
+  const [isMapInteracting, setIsMapInteracting] = useState(false);
+  const [viewportSize, setViewportSize] = useState<GridViewportSize>({ width: 0, height: 0 });
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const viewportSizeRef = useRef<GridViewportSize>({ width: 0, height: 0 });
+  const pendingViewportFrameRef = useRef<number | null>(null);
+  const pendingViewportRef = useRef<MapViewportState | null>(null);
+  const wheelIdleTimerRef = useRef<number | null>(null);
+  const viewport = normalizeGridViewport(mapData, viewportSize, storedViewport ?? getDefaultViewportForMap(mapData));
   const scale = viewport.scale;
   const offset = viewport.offset;
   const currentCoord = getNavigationCoord(game, mapData.mapId);
@@ -1035,223 +1037,140 @@ function WorldMapView({
   const visiblePath = travel?.mapId === mapData.mapId ? [currentCoord, ...travel.path] : [];
   const zones = useMemo(() => getGridDestinationZones(mapData.mapId), [mapData.mapId]);
   const hitZone = (targetCoord ? findGridDestinationZone(mapData.mapId, targetCoord) : null) ?? findGridDestinationZone(mapData.mapId, currentCoord);
-  const hitZoneLabel = hitZone ? getDestinationZoneLabel(hitZone, game.world.regionId) : null;
+  const hitZoneLabel = hitZone ? getDestinationZoneLabel(hitZone, game.world.regionId, game.world.locationId) : null;
+  const visibleRect = useMemo(() => getVisibleGridRectFromViewport(mapData, viewportSize, scale, offset), [mapData, viewportSize, scale, offset.x, offset.y]);
+  const visibleCells = useMemo(() => getCellsInRect(mapData, visibleRect), [mapData, visibleRect]);
+  const zoomTier = getZoomTier(scale);
+  const pathKeys = useMemo(() => new Set(visiblePath.map(gridCoordKey)), [visiblePath]);
+  const detailedCells = debugOpen ? visibleCells : [];
+  const markers = mode === "world" ? getVisibleWorldPoiMarkers(scale) : getLocalSceneMarkers(location, currentScene);
+  const travelLabel = getTravelLabel(travel, mapData.mapId, location);
+  const subtitle =
+    travelLabel ??
+    (mode === "world"
+      ? selectedWorldPoi
+        ? `已抵达：${selectedWorldPoi.name}`
+        : `缩放 ${scale.toFixed(2)}x / ${getWorldZoomHint(scale)}`
+      : currentScene
+        ? `${location?.name ?? mapData.name} / 当前：${currentScene.name}`
+        : `${location?.name ?? mapData.name} local map`);
 
-  function clampScale(nextScale: number) {
-    return Math.min(4, Math.max(1, Number(nextScale.toFixed(2))));
-  }
-
-  function zoom(delta: number) {
-    setMapViewport(mapData.mapId, { scale: clampScale(scale + delta) });
-  }
-
-  function resetMap() {
-    resetMapViewport(mapData.mapId);
-  }
-
-  function stopMapGesture(event: PointerEvent<HTMLElement>) {
-    event.stopPropagation();
-    setDragStart(null);
-  }
-
-  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (dragStart && dragStart.pointerId === event.pointerId && !didDrag && !isInteractiveMapTarget(event.target)) {
-      const coord = getGridCoordFromPointer(event, mapData);
-      if (coord) {
-        onMapTarget(coord);
-      }
+  useEffect(() => {
+    const viewportElement = viewportRef.current;
+    if (!viewportElement) {
+      return undefined;
     }
-    setDragStart(null);
-    setDidDrag(false);
-  }
 
-  return (
-    <>
-      <MapHeader
-        title="大世界"
-        subtitle={
-          travel?.mapId === mapData.mapId && travel.intent.kind === "province"
-            ? `正在前往：${travel.intent.province.name}`
-            : selectedProvince
-              ? `已抵达州域：${selectedProvince.name}`
-              : "点击州域标记自动寻路，抵达后查看势力"
-        }
-        debugOpen={debugOpen}
-        onZoomIn={() => zoom(0.18)}
-        onZoomOut={() => zoom(-0.18)}
-        onReset={resetMap}
-        onToggleDebug={onToggleDebug}
-        onRunSelfTest={onRunSelfTest}
-      />
+    const updateViewportSize = () => {
+      const nextSize = {
+        width: viewportElement.clientWidth,
+        height: viewportElement.clientHeight,
+      };
+      viewportSizeRef.current = nextSize;
+      setViewportSize((current) => (current.width === nextSize.width && current.height === nextSize.height ? current : nextSize));
+    };
 
-      <div
-        className="world-map-viewport"
-        onWheel={(event) => {
-          event.preventDefault();
-          zoom(event.deltaY < 0 ? 0.12 : -0.12);
-        }}
-        onPointerDown={(event) => {
-          if (isInteractiveMapTarget(event.target)) {
-            return;
-          }
-          event.currentTarget.setPointerCapture(event.pointerId);
-          setDidDrag(false);
-          setDragStart({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: offset.x, originY: offset.y });
-        }}
-        onPointerMove={(event) => {
-          if (!dragStart || dragStart.pointerId !== event.pointerId) {
-            return;
-          }
-          const deltaX = event.clientX - dragStart.x;
-          const deltaY = event.clientY - dragStart.y;
-          if (Math.abs(deltaX) + Math.abs(deltaY) > 5) {
-            setDidDrag(true);
-          }
-          setMapViewport(mapData.mapId, { offset: { x: dragStart.originX + deltaX, y: dragStart.originY + deltaY } });
-        }}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={() => {
-          setDragStart(null);
-          setDidDrag(false);
-        }}
-      >
-        <div
-          className="world-map-canvas"
-          style={{
-            transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
-          }}
-        >
-          <img src={mapImages.world} alt="修仙大世界地图" draggable={false} loading="lazy" />
-          {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} /> : null}
-          <GridPlayerMarker mapData={mapData} coord={currentCoord} markerScale={1 / scale} />
-          {worldProvinces.map((province) => {
-            const zone = getGridDestinationZone(mapData.mapId, "province", province.id);
-            if (!zone) {
-              return null;
-            }
-            return (
-              <button
-                aria-label={`查看${province.name}`}
-                className={`map-zone-label ${selectedProvince?.id === province.id ? "active" : ""} ${province.open ? "open" : "locked"}`}
-                key={province.id}
-                style={getGridAnchorStyle(mapData, zone.anchor, 1 / scale)}
-                onPointerDown={stopMapGesture}
-                onPointerMove={(event) => event.stopPropagation()}
-                onPointerUp={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelectProvince(province);
-                }}
-              >
-                {province.name}
-              </button>
-            );
-          })}
-        </div>
+    updateViewportSize();
+    const observer = new ResizeObserver(updateViewportSize);
+    observer.observe(viewportElement);
+    window.addEventListener("resize", updateViewportSize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateViewportSize);
+    };
+  }, [mapData.mapId]);
 
-        {debugOpen ? <GridDebugReadout current={currentCoord} target={targetCoord} path={visiblePath} hitZoneLabel={hitZoneLabel} result={debugResult} /> : null}
+  useEffect(() => {
+    pendingViewportRef.current = viewport;
+  }, [viewport.scale, viewport.offset.x, viewport.offset.y]);
 
-        {selectedProvince ? (
-          <section className="world-info-drawer" onPointerDown={(event) => event.stopPropagation()}>
-            <div className="section-heading">
-              <h2>
-                <GameIcon name="module-explore" size={18} />
-                {selectedProvince.name}
-              </h2>
-              <span>{selectedProvince.direction}</span>
-            </div>
-            <p>{selectedProvince.description}</p>
-            <div className="force-list">
-              {selectedProvince.forces.map((force) => (
-                <span key={force}>{force}</span>
-              ))}
-            </div>
-            <div className="world-drawer-actions">
-              <button className="ghost-button" onClick={onCloseProvince}>
-                <GameIcon name="action-back" size={15} />
-                返回
-              </button>
-              <button className="primary-action compact" disabled={!selectedProvince.open} onClick={() => onEnterProvince(selectedProvince)}>
-                {selectedProvince.open ? `进入${selectedProvince.name}` : "暂未开放"}
-                <small>{selectedProvince.open ? "进入州域内部地图" : "后续版本开放此州域"}</small>
-              </button>
-            </div>
-          </section>
-        ) : null}
-      </div>
-    </>
+  useEffect(
+    () => () => {
+      if (pendingViewportFrameRef.current !== null) {
+        cancelAnimationFrame(pendingViewportFrameRef.current);
+      }
+      if (wheelIdleTimerRef.current !== null) {
+        window.clearTimeout(wheelIdleTimerRef.current);
+      }
+    },
+    [],
   );
-}
-
-function RegionImageMapView({
-  mapData,
-  game,
-  travel,
-  debugOpen,
-  debugResult,
-  config,
-  regionName,
-  currentLocationId,
-  selectedMarkerId,
-  locations,
-  onToggleDebug,
-  onRunSelfTest,
-  onMapTarget,
-  onSelectMarker,
-  onCloseMarker,
-  onEnterLocation,
-}: {
-  mapData: GridMapData;
-  game: GameState;
-  travel: ActiveTravel | null;
-  debugOpen: boolean;
-  debugResult: string | null;
-  config: RegionMapConfig;
-  regionName: string;
-  currentLocationId: string;
-  selectedMarkerId: string | null;
-  locations: LocationNode[];
-  onToggleDebug: () => void;
-  onRunSelfTest: () => void;
-  onMapTarget: (coord: GridCoord) => void;
-  onSelectMarker: (locationId: string) => void;
-  onCloseMarker: () => void;
-  onEnterLocation: (locationId: string) => void;
-}) {
-  const viewport = useMapUiStore((state) => state.viewportByMapId[mapData.mapId] ?? defaultMapViewport);
-  const setMapViewport = useMapUiStore((state) => state.setMapViewport);
-  const resetMapViewport = useMapUiStore((state) => state.resetMapViewport);
-  const [dragStart, setDragStart] = useState<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
-  const [didDrag, setDidDrag] = useState(false);
-  const scale = viewport.scale;
-  const offset = viewport.offset;
-  const selectedMarker = selectedMarkerId ? config.markers.find((marker) => marker.locationId === selectedMarkerId) : null;
-  const selectedLocation = selectedMarker ? locations.find((item) => item.id === selectedMarker.locationId) : null;
-  const travelIntent = travel?.mapId === mapData.mapId ? travel.intent : null;
-  const travelTargetLocation =
-    travelIntent && isLocationTravelIntent(travelIntent) ? locations.find((item) => item.id === travelIntent.locationId) : null;
-  const currentCoord = getNavigationCoord(game, mapData.mapId);
-  const targetCoord = travel?.mapId === mapData.mapId ? travel.target : null;
-  const visiblePath = travel?.mapId === mapData.mapId ? [currentCoord, ...travel.path] : [];
-  const zones = useMemo(() => getGridDestinationZones(mapData.mapId), [mapData.mapId]);
-  const hitZone = (targetCoord ? findGridDestinationZone(mapData.mapId, targetCoord) : null) ?? findGridDestinationZone(mapData.mapId, currentCoord);
-  const hitZoneLabel = hitZone ? getDestinationZoneLabel(hitZone, game.world.regionId) : null;
 
   function clampScale(nextScale: number) {
-    return Math.min(config.maxScale, Math.max(1, Number(nextScale.toFixed(2))));
+    const minScale = mapData.layer === "world" ? 0.4 : 0.8;
+    return Math.min(GRID_MAP_MAX_SCALE, Math.max(minScale, Number(nextScale.toFixed(3))));
   }
 
-  function zoom(delta: number) {
-    setMapViewport(mapData.mapId, { scale: clampScale(scale + delta) });
+  function scheduleViewport(nextViewport: MapViewportState, immediate = false) {
+    const nextSize = viewportSizeRef.current.width > 0 ? viewportSizeRef.current : viewportSize;
+    const normalizedViewport = normalizeGridViewport(mapData, nextSize, nextViewport);
+    pendingViewportRef.current = normalizedViewport;
+
+    if (immediate) {
+      if (pendingViewportFrameRef.current !== null) {
+        cancelAnimationFrame(pendingViewportFrameRef.current);
+        pendingViewportFrameRef.current = null;
+      }
+      setMapViewport(mapData.mapId, normalizedViewport);
+      return;
+    }
+
+    if (pendingViewportFrameRef.current !== null) {
+      return;
+    }
+
+    pendingViewportFrameRef.current = requestAnimationFrame(() => {
+      pendingViewportFrameRef.current = null;
+      const pendingViewport = pendingViewportRef.current;
+      if (pendingViewport) {
+        setMapViewport(mapData.mapId, pendingViewport);
+      }
+    });
+  }
+
+  function zoomAtViewportPoint(centerX: number, centerY: number, factor: number, immediate = false) {
+    const current = pendingViewportRef.current ?? viewport;
+    const nextScale = clampScale(current.scale * factor);
+    if (nextScale === current.scale) {
+      return;
+    }
+    const contentX = (centerX - current.offset.x) / current.scale;
+    const contentY = (centerY - current.offset.y) / current.scale;
+    scheduleViewport(
+      {
+        scale: nextScale,
+        offset: {
+          x: centerX - contentX * nextScale,
+          y: centerY - contentY * nextScale,
+        },
+      },
+      immediate,
+    );
+  }
+
+  function zoom(factor: number) {
+    zoomAtViewportPoint(0, 0, factor, true);
   }
 
   function resetMap() {
-    resetMapViewport(mapData.mapId);
+    scheduleViewport(getDefaultViewportForMap(mapData), true);
+  }
+
+  function startWheelInteraction() {
+    setIsMapInteracting(true);
+    if (wheelIdleTimerRef.current !== null) {
+      window.clearTimeout(wheelIdleTimerRef.current);
+    }
+    wheelIdleTimerRef.current = window.setTimeout(() => {
+      setIsMapInteracting(false);
+      wheelIdleTimerRef.current = null;
+    }, 120);
   }
 
   function stopMapGesture(event: PointerEvent<HTMLElement>) {
     event.stopPropagation();
     setDragStart(null);
+    setIsMapInteracting(false);
   }
 
   function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
@@ -1263,38 +1182,41 @@ function RegionImageMapView({
     }
     setDragStart(null);
     setDidDrag(false);
+    setIsMapInteracting(false);
   }
 
   return (
-    <div className="region-image-map">
+    <div className={`grid-map-panel ${mode === "world" ? "world-grid-map-panel" : "local-grid-map-panel"}`}>
       <MapHeader
-        title="区域地图"
-        subtitle={
-          travelTargetLocation
-            ? `正在前往：${travelTargetLocation.name}`
-            : selectedLocation
-              ? `已抵达地点：${selectedLocation.name}`
-              : "点击地点标记自动寻路，抵达后查看详情"
-        }
+        title={mode === "world" ? "问仙大世界" : "local map"}
+        subtitle={subtitle}
         debugOpen={debugOpen}
-        onZoomIn={() => zoom(0.18)}
-        onZoomOut={() => zoom(-0.18)}
+        onZoomIn={() => zoom(GRID_MAP_BUTTON_ZOOM_FACTOR)}
+        onZoomOut={() => zoom(1 / GRID_MAP_BUTTON_ZOOM_FACTOR)}
         onReset={resetMap}
         onToggleDebug={onToggleDebug}
         onRunSelfTest={onRunSelfTest}
       />
 
       <div
-        className="world-map-viewport region-map-viewport"
+        ref={viewportRef}
+        className={`world-map-viewport grid-map-viewport ${mode === "world" ? "world-grid-map-viewport" : "local-grid-map-viewport"} zoom-${zoomTier} ${
+          isMapInteracting ? "is-map-interacting" : ""
+        }`}
         onWheel={(event) => {
           event.preventDefault();
-          zoom(event.deltaY < 0 ? 0.12 : -0.12);
+          startWheelInteraction();
+          const viewportRect = event.currentTarget.getBoundingClientRect();
+          const centerX = event.clientX - viewportRect.left - viewportRect.width / 2;
+          const centerY = event.clientY - viewportRect.top - viewportRect.height / 2;
+          zoomAtViewportPoint(centerX, centerY, event.deltaY < 0 ? GRID_MAP_WHEEL_ZOOM_FACTOR : 1 / GRID_MAP_WHEEL_ZOOM_FACTOR);
         }}
         onPointerDown={(event) => {
           if (isInteractiveMapTarget(event.target)) {
             return;
           }
           event.currentTarget.setPointerCapture(event.pointerId);
+          setIsMapInteracting(true);
           setDidDrag(false);
           setDragStart({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: offset.x, originY: offset.y });
         }}
@@ -1307,77 +1229,71 @@ function RegionImageMapView({
           if (Math.abs(deltaX) + Math.abs(deltaY) > 5) {
             setDidDrag(true);
           }
-          setMapViewport(mapData.mapId, { offset: { x: dragStart.originX + deltaX, y: dragStart.originY + deltaY } });
+          scheduleViewport({
+            scale,
+            offset: { x: dragStart.originX + deltaX, y: dragStart.originY + deltaY },
+          });
         }}
         onPointerUp={handlePointerUp}
         onPointerCancel={() => {
           setDragStart(null);
           setDidDrag(false);
+          setIsMapInteracting(false);
         }}
       >
         <div
-          className="world-map-canvas region-map-canvas"
+          className={`world-map-canvas grid-map-canvas ${mode === "world" ? "world-grid-map-canvas" : "local-grid-map-canvas"}`}
           style={{
+            aspectRatio: `${mapData.width} / ${mapData.height}`,
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={regionMapImages[config.imageKey]} alt={`${regionName}区域地图`} draggable={false} loading="lazy" />
-          {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} /> : null}
-          <GridPlayerMarker mapData={mapData} coord={currentCoord} markerScale={1 / scale} />
-          {config.markers.map((marker) => {
-            const item = locations.find((location) => location.id === marker.locationId);
-            const zone = getGridDestinationZone(mapData.mapId, "location", marker.locationId);
-            if (!item || !zone) {
-              return null;
-            }
-            return (
-              <button
-                aria-label={`查看${item.name}`}
-                className={`map-zone-label region-zone-label ${selectedMarkerId === marker.locationId ? "active" : ""} ${
-                  currentLocationId === marker.locationId ? "current" : ""
-                }`}
-                key={marker.locationId}
-                style={getGridAnchorStyle(mapData, zone.anchor, 1 / scale, marker.labelOffsetX, marker.labelOffsetY)}
-                onPointerDown={stopMapGesture}
-                onPointerMove={(event) => event.stopPropagation()}
-                onPointerUp={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelectMarker(marker.locationId);
-                }}
-              >
-                {item.name}
-              </button>
-            );
-          })}
+          <GridAtmosphereOverlay mode={mode} />
+          {mapData.roadSegments.length > 0 ? <GridRoadOverlay mapData={mapData} visibleRect={visibleRect} /> : null}
+          {detailedCells.map((cell) => (
+            <GridTerrainCell
+              cell={cell}
+              className={`${pathKeys.has(gridCoordKey(cell)) ? "route" : ""}`}
+              key={`terrain-${cell.x}-${cell.y}`}
+              mapData={mapData}
+            />
+          ))}
+          {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} visibleCells={visibleCells} /> : null}
+          {visiblePath.length > 0 ? <GridRouteOverlay mapData={mapData} path={visiblePath} /> : null}
+        </div>
+
+        <div className="grid-map-marker-overlay">
+          <GridPlayerMarker style={getGridViewportAnchorStyle(mapData, currentCoord, viewportSize, scale, offset)} />
+          {markers.map((marker) => (
+            <button
+              aria-label={`查看${marker.label}`}
+              className={marker.className}
+              key={marker.id}
+              style={getGridViewportAnchorStyle(mapData, marker.coord, viewportSize, scale, offset)}
+              onPointerDown={stopMapGesture}
+              onPointerMove={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (marker.kind === "worldPoi") {
+                  onSelectWorldPoi?.(marker.poi);
+                  return;
+                }
+                onSelectScene?.(marker.scene.id);
+              }}
+              type="button"
+            >
+              <GameIcon name={marker.iconName} size={14} />
+              <span>{marker.label}</span>
+              {marker.detail ? <small>{marker.detail}</small> : null}
+            </button>
+          ))}
+          {mode === "world" ? <WorldRegionLabels scale={scale} mapData={mapData} viewportSize={viewportSize} offset={offset} /> : null}
         </div>
 
         {debugOpen ? <GridDebugReadout current={currentCoord} target={targetCoord} path={visiblePath} hitZoneLabel={hitZoneLabel} result={debugResult} /> : null}
-
-        {selectedMarker && selectedLocation ? (
-          <section className="world-info-drawer" onPointerDown={(event) => event.stopPropagation()}>
-            <div className="section-heading">
-              <h2>
-                <GameIcon name={getLocationIconName(selectedLocation.type)} size={18} />
-                {selectedLocation.name}
-              </h2>
-              <span>
-                {getLocationTypeLabel(selectedLocation.type)} / 推荐 {selectedMarker.recommendedRealm}
-              </span>
-            </div>
-            <p>{selectedLocation.description}</p>
-            <p className="danger-hint">{selectedMarker.danger}</p>
-            <div className="world-drawer-actions">
-              <button className="ghost-button" onClick={onCloseMarker}>
-                <GameIcon name="action-back" size={15} />
-                返回
-              </button>
-              <button className="primary-action compact" onClick={() => onEnterLocation(selectedLocation.id)}>
-                进入{selectedLocation.name}
-                <small>进入地点内部场景</small>
-              </button>
-            </div>
-          </section>
+        {mode === "world" && selectedWorldPoi ? (
+          <WorldPoiDrawer poi={selectedWorldPoi} onClose={onCloseWorldPoi} onEnter={onEnterWorldPoi} />
         ) : null}
       </div>
     </div>
@@ -1432,29 +1348,192 @@ function MapHeader({
   );
 }
 
-function GridPlayerMarker({ mapData, coord, markerScale }: { mapData: GridMapData; coord: GridCoord; markerScale: number }) {
+type GridMapMarker =
+  | {
+      kind: "worldPoi";
+      id: string;
+      label: string;
+      coord: GridCoord;
+      poi: WorldPoiConfig;
+      iconName: GameIconName;
+      className: string;
+      detail?: string;
+    }
+  | {
+      kind: "scene";
+      id: string;
+      label: string;
+      coord: GridCoord;
+      scene: SceneNode;
+      iconName: GameIconName;
+      className: string;
+      detail?: string;
+    };
+
+function GridAtmosphereOverlay({ mode }: { mode: "world" | "local" }) {
+  return <div className={`grid-atmosphere-overlay ${mode}`} aria-hidden="true" />;
+}
+
+function GridRoadOverlay({ mapData, visibleRect }: { mapData: GridMapData; visibleRect: GridVisibleRect }) {
+  const segments = mapData.roadSegments.filter((segment) => isRoadSegmentVisible(segment, visibleRect));
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return (
+    <svg className="grid-road-overlay-svg" viewBox={`0 0 ${mapData.width} ${mapData.height}`} preserveAspectRatio="none" aria-hidden="true">
+      {segments.map((segment) => (
+        <polyline
+          className={`grid-road-line road-kind-${segment.kind}`}
+          key={segment.id}
+          points={segment.points.map((point) => `${point.x + 0.5},${point.y + 0.5}`).join(" ")}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function GridTerrainCell({ mapData, cell, className = "" }: { mapData: GridMapData; cell: GridCell; className?: string }) {
   return (
     <span
-      className="grid-player-marker"
-      style={{
-        left: `${((coord.x + 0.5) / mapData.width) * 100}%`,
-        top: `${((coord.y + 0.5) / mapData.height) * 100}%`,
-        "--marker-scale": `${markerScale}`,
-      } as CSSProperties}
-    >
+      className={`grid-terrain-cell terrain-${cell.terrain} danger-${Math.min(7, cell.dangerLevel)} spirit-${Math.min(8, cell.spiritLevel)} ${
+        cell.walkable ? "walkable" : "blocked"
+      } ${className}`.trim()}
+      style={getGridCellStyle(mapData, cell)}
+    />
+  );
+}
+
+function GridRouteOverlay({ mapData, path }: { mapData: GridMapData; path: GridCoord[] }) {
+  return (
+    <div className="grid-route-overlay" aria-hidden="true">
+      {path.map((coord, index) => (
+        <span className={index === path.length - 1 ? "route-step target" : "route-step"} key={`${coord.x}-${coord.y}-${index}`} style={getGridCellStyle(mapData, coord)} />
+      ))}
+    </div>
+  );
+}
+
+function WorldRegionLabels({
+  mapData,
+  scale,
+  viewportSize,
+  offset,
+}: {
+  mapData: GridMapData;
+  scale: number;
+  viewportSize: GridViewportSize;
+  offset: { x: number; y: number };
+}) {
+  const labels = [
+    { id: "north", name: "北境", coord: { x: 156, y: 24 }, detail: "玄冰雪域" },
+    { id: "central", name: "中州", coord: { x: 160, y: 104 }, detail: "天下腹地" },
+    { id: "south", name: "南疆", coord: { x: 156, y: 168 }, detail: "巫妖灵疆" },
+    { id: "east", name: "东海", coord: { x: 268, y: 88 }, detail: "万岛沧溟" },
+    { id: "west", name: "西漠", coord: { x: 58, y: 112 }, detail: "沙海佛国" },
+  ];
+  return (
+    <div className={`world-region-labels ${scale < 1.5 ? "visible" : ""}`} aria-hidden="true">
+      {labels.map((label) => (
+        <span className={`world-region-label ${label.id}`} key={label.id} style={getGridViewportAnchorStyle(mapData, label.coord, viewportSize, scale, offset)}>
+          {label.name}
+          <small>{label.detail}</small>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function WorldPoiDrawer({
+  poi,
+  onClose,
+  onEnter,
+}: {
+  poi: WorldPoiConfig;
+  onClose?: () => void;
+  onEnter?: (poi: WorldPoiConfig) => void;
+}) {
+  return (
+    <section className={`world-info-drawer world-poi-drawer poi-${poi.kind}`} onPointerDown={(event) => event.stopPropagation()}>
+      <div className="section-heading">
+        <h2>
+          <GameIcon name={poi.iconName as GameIconName} size={18} />
+          {poi.name}
+        </h2>
+        <span>
+          {poi.regionTag} / {poi.climateTag}
+        </span>
+      </div>
+      <p>{poi.description}</p>
+      <p className="danger-hint">
+        危险 {poi.dangerLevel} / 灵气 {poi.spiritLevel} / 推荐 {poi.recommendedRealm}
+      </p>
+      <p className="muted">{poi.danger}</p>
+      {poi.forces?.length ? (
+        <div className="force-list">
+          {poi.forces.map((force) => (
+            <span key={force}>{force}</span>
+          ))}
+        </div>
+      ) : null}
+      <div className="world-drawer-actions">
+        <button className="ghost-button" onClick={onClose}>
+          <GameIcon name="action-back" size={15} />
+          返回
+        </button>
+        <button className="primary-action compact" disabled={!poi.open || !poi.locationId} onClick={() => onEnter?.(poi)}>
+          {poi.open && poi.locationId ? `进入${poi.name}` : "暂未开放"}
+          <small>{poi.open && poi.locationId ? "进入该地点 local map" : "保留为世界区域标签/后续内容"}</small>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function GridPlayerMarker({ style }: { style: CSSProperties }) {
+  return (
+    <span className="grid-player-marker" style={style}>
       你
     </span>
   );
 }
 
-function getGridAnchorStyle(mapData: GridMapData, coord: GridCoord, markerScale: number, offsetX = 0, offsetY = 0): CSSProperties {
+function getGridViewportAnchorStyle(
+  mapData: GridMapData,
+  coord: GridCoord,
+  viewportSize: GridViewportSize,
+  scale: number,
+  offset: { x: number; y: number },
+  offsetX = 0,
+  offsetY = 0,
+): CSSProperties {
+  const canvasSize = getGridCanvasBaseSize(mapData, viewportSize);
+  if (!canvasSize) {
+    return {
+      left: "50%",
+      top: "50%",
+      "--label-offset-x": `${offsetX}px`,
+      "--label-offset-y": `${offsetY}px`,
+    } as CSSProperties;
+  }
+
+  const x = viewportSize.width / 2 + offset.x + (((coord.x + 0.5) / mapData.width) - 0.5) * canvasSize.width * scale;
+  const y = viewportSize.height / 2 + offset.y + (((coord.y + 0.5) / mapData.height) - 0.5) * canvasSize.height * scale;
   return {
-    left: `${((coord.x + 0.5) / mapData.width) * 100}%`,
-    top: `${((coord.y + 0.5) / mapData.height) * 100}%`,
-    "--marker-scale": `${markerScale}`,
+    left: `${Math.round(x)}px`,
+    top: `${Math.round(y)}px`,
     "--label-offset-x": `${offsetX}px`,
     "--label-offset-y": `${offsetY}px`,
   } as CSSProperties;
+}
+
+function getGridCellStyle(mapData: GridMapData, coord: GridCoord): CSSProperties {
+  return {
+    left: `${(coord.x / mapData.width) * 100}%`,
+    top: `${(coord.y / mapData.height) * 100}%`,
+    width: `${100 / mapData.width}%`,
+    height: `${100 / mapData.height}%`,
+  };
 }
 
 function getPercentAnchorStyle(x: number, y: number, markerScale: number): CSSProperties {
@@ -1472,6 +1551,7 @@ function GridDebugOverlay({
   path,
   zones,
   hitZone,
+  visibleCells,
 }: {
   mapData: GridMapData;
   current: GridCoord;
@@ -1479,6 +1559,7 @@ function GridDebugOverlay({
   path: GridCoord[];
   zones: GridDestinationZone[];
   hitZone: GridDestinationZone | null;
+  visibleCells: GridCell[];
 }) {
   const pathKeys = useMemo(() => new Set(path.map(gridCoordKey)), [path]);
   const zoneKeys = useMemo(() => new Set(zones.flatMap((zone) => zone.cells.map(gridCoordKey))), [zones]);
@@ -1488,7 +1569,7 @@ function GridDebugOverlay({
 
   return (
     <div className="grid-debug-overlay" aria-hidden="true">
-      {mapData.cells.map((cell) => {
+      {visibleCells.map((cell) => {
         const key = gridCoordKey(cell);
         return (
           <span
@@ -1498,12 +1579,7 @@ function GridDebugOverlay({
               key === targetKey ? "target" : ""
             }`}
             key={key}
-            style={{
-              left: `${(cell.x / mapData.width) * 100}%`,
-              top: `${(cell.y / mapData.height) * 100}%`,
-              width: `${100 / mapData.width}%`,
-              height: `${100 / mapData.height}%`,
-            }}
+            style={getGridCellStyle(mapData, cell)}
           />
         );
       })}
@@ -1533,6 +1609,180 @@ function GridDebugReadout({
       {result ? <small>{result}</small> : null}
     </div>
   );
+}
+
+function getVisibleWorldPoiMarkers(scale: number): GridMapMarker[] {
+  return worldPois
+    .filter((poi) => scale >= poi.revealZoom)
+    .sort((left, right) => right.priority - left.priority)
+    .map((poi) => ({
+      kind: "worldPoi",
+      id: poi.id,
+      label: poi.name,
+      coord: poi.coord,
+      poi,
+      iconName: poi.iconName as GameIconName,
+      detail: scale >= 0.8 ? `${poi.regionTag} · 危险${poi.dangerLevel}` : undefined,
+      className: `map-zone-label grid-map-marker world-poi-marker poi-${poi.kind} ${poi.open ? "open" : "locked"} ${
+        poi.mainQuest ? "main-quest" : ""
+      }`,
+    }));
+}
+
+function getLocalSceneMarkers(location: LocationNode | undefined, currentScene: SceneNode | undefined): GridMapMarker[] {
+  if (!location) {
+    return [];
+  }
+  const markers: GridMapMarker[] = [];
+  location.scenes.forEach((scene) => {
+    const coord = getLocalSceneGridCoord(location.id, scene.id);
+    if (!coord) {
+      return;
+    }
+    markers.push({
+      kind: "scene",
+      id: scene.id,
+      label: scene.name,
+      coord,
+      scene,
+      iconName: getSceneIconName(scene.type),
+      detail: scene.type,
+      className: `map-zone-label grid-map-marker local-scene-marker ${scene.id === currentScene?.id ? "active" : ""}`,
+    });
+  });
+  return markers;
+}
+
+function getTravelLabel(travel: ActiveTravel | null, mapId: string, location?: LocationNode): string | null {
+  if (!travel || travel.mapId !== mapId) {
+    return null;
+  }
+  if (travel.intent.kind === "worldPoiPreview") {
+    const poi = getWorldPoi(travel.intent.poiId);
+    return poi ? `正在前往：${poi.name}` : "正在寻路";
+  }
+  if (travel.intent.kind === "localScene") {
+    const sceneId = travel.intent.sceneId;
+    const sceneName = location?.scenes.find((scene) => scene.id === sceneId)?.name;
+    return sceneName ? `正在前往：${sceneName}` : "正在 local map 内移动";
+  }
+  return "正在沿灵路移动";
+}
+
+function getDefaultViewportForMap(mapData: GridMapData) {
+  return mapData.layer === "world" ? { scale: 0.72, offset: { x: 0, y: 0 } } : defaultMapViewport;
+}
+
+function getZoomTier(scale: number): "overview" | "normal" | "detail" | "cell" | "micro" {
+  if (scale < 0.8) {
+    return "overview";
+  }
+  if (scale < 1.5) {
+    return "normal";
+  }
+  if (scale < 2.5) {
+    return "detail";
+  }
+  if (scale < 4) {
+    return "cell";
+  }
+  return "micro";
+}
+
+function getWorldZoomHint(scale: number): string {
+  if (scale < 0.8) {
+    return "总览：大城、宗门、山脉、禁地";
+  }
+  if (scale < 1.5) {
+    return "区域：城镇、道路、航线、危险等级";
+  }
+  if (scale < 2.5) {
+    return "细节：洞府、秘境、资源点、妖兽区";
+  }
+  return "格子：地形、灵气、移动消耗、可通行状态";
+}
+
+function getFullGridRect(mapData: GridMapData): GridVisibleRect {
+  return { left: 0, top: 0, right: mapData.width, bottom: mapData.height };
+}
+
+function getVisibleGridRectFromViewport(mapData: GridMapData, viewportSize: GridViewportSize, scale: number, offset: { x: number; y: number }): GridVisibleRect {
+  const canvasSize = getGridCanvasBaseSize(mapData, viewportSize);
+  if (!canvasSize) {
+    return getFullGridRect(mapData);
+  }
+  const cellWidth = canvasSize.width / mapData.width;
+  const cellHeight = canvasSize.height / mapData.height;
+  const centerX = mapData.width / 2 - offset.x / (cellWidth * scale);
+  const centerY = mapData.height / 2 - offset.y / (cellHeight * scale);
+  const halfWidth = viewportSize.width / (2 * cellWidth * scale);
+  const halfHeight = viewportSize.height / (2 * cellHeight * scale);
+  const padding = mapData.layer === "world" ? GRID_MAP_VISIBLE_PADDING : 2;
+
+  return {
+    left: clampNumber(Math.floor(centerX - halfWidth) - padding, 0, mapData.width),
+    top: clampNumber(Math.floor(centerY - halfHeight) - padding, 0, mapData.height),
+    right: clampNumber(Math.ceil(centerX + halfWidth) + padding, 0, mapData.width),
+    bottom: clampNumber(Math.ceil(centerY + halfHeight) + padding, 0, mapData.height),
+  };
+}
+
+function normalizeGridViewport(mapData: GridMapData, viewportSize: GridViewportSize, viewport: MapViewportState): MapViewportState {
+  const minScale = mapData.layer === "world" ? 0.4 : 0.8;
+  const scale = Math.min(GRID_MAP_MAX_SCALE, Math.max(minScale, Number(viewport.scale.toFixed(3))));
+  const canvasSize = getGridCanvasBaseSize(mapData, viewportSize);
+  if (!canvasSize) {
+    return { scale, offset: viewport.offset };
+  }
+
+  const maxOffsetX = Math.max(GRID_MAP_EDGE_PADDING, (canvasSize.width * scale - viewportSize.width) / 2 + GRID_MAP_EDGE_PADDING);
+  const maxOffsetY = Math.max(GRID_MAP_EDGE_PADDING, (canvasSize.height * scale - viewportSize.height) / 2 + GRID_MAP_EDGE_PADDING);
+  return {
+    scale,
+    offset: {
+      x: clampNumber(viewport.offset.x, -maxOffsetX, maxOffsetX),
+      y: clampNumber(viewport.offset.y, -maxOffsetY, maxOffsetY),
+    },
+  };
+}
+
+function getGridCanvasBaseSize(mapData: GridMapData, viewportSize: GridViewportSize): GridViewportSize | null {
+  if (viewportSize.width <= 0 || viewportSize.height <= 0) {
+    return null;
+  }
+  return {
+    width: viewportSize.width,
+    height: viewportSize.width * (mapData.height / mapData.width),
+  };
+}
+
+function isRoadSegmentVisible(segment: GridMapData["roadSegments"][number], rect: GridVisibleRect): boolean {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  segment.points.forEach((point) => {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x + 1);
+    maxY = Math.max(maxY, point.y + 1);
+  });
+
+  return maxX >= rect.left && minX <= rect.right && maxY >= rect.top && minY <= rect.bottom;
+}
+
+function getCellsInRect(mapData: GridMapData, rect: GridVisibleRect): GridCell[] {
+  const cells: GridCell[] = [];
+  for (let y = rect.top; y < rect.bottom; y += 1) {
+    for (let x = rect.left; x < rect.right; x += 1) {
+      const cell = mapData.cells[y * mapData.width + x];
+      if (cell) {
+        cells.push(cell);
+      }
+    }
+  }
+  return cells;
 }
 
 function getGridCoordFromPointer(event: PointerEvent<HTMLDivElement>, mapData: GridMapData): GridCoord | null {
@@ -1577,55 +1827,61 @@ function updateNavigationPosition(game: GameState, mapId: string, coord: GridCoo
 }
 
 function applyArrivalEvent(game: GameState, travel: ActiveTravel): GameState {
-  return maybeTriggerMapEvent(game, { mapId: travel.mapId, coord: travel.target });
+  return maybeTriggerMapEvent(game, { mapId: travel.mapId, coord: travel.target, locationId: getTravelLocationId(travel) });
 }
 
-function getRegionIdFromGridMapId(mapId: string): string | null {
-  return mapId.startsWith("region:") ? mapId.slice("region:".length) : null;
+function getTravelLocationId(travel: ActiveTravel): string | undefined {
+  if (travel.intent.kind === "location" || travel.intent.kind === "locationPreview" || travel.intent.kind === "localScene") {
+    return travel.intent.locationId;
+  }
+  if (travel.intent.kind === "worldPoiPreview") {
+    return getWorldPoi(travel.intent.poiId)?.locationId;
+  }
+  const targetZone = findGridDestinationZone(travel.mapId, travel.target);
+  if (targetZone?.kind === "poi") {
+    return getWorldPoi(targetZone.targetId)?.locationId;
+  }
+  if (targetZone?.kind === "scene") {
+    return getLocationIdFromLocalGridMapId(targetZone.mapId);
+  }
+  return targetZone?.kind === "location" ? targetZone.targetId : undefined;
 }
 
-function isLocationTravelIntent(intent: TravelIntent): intent is LocationTravelIntent {
-  return intent.kind === "locationPreview" || intent.kind === "location";
-}
-
-function getDestinationZoneLabel(zone: GridDestinationZone, currentRegionId: string): string {
-  if (zone.kind === "province") {
-    return getWorldProvince(zone.targetId).name;
+function getDestinationZoneLabel(zone: GridDestinationZone, currentRegionId: string, currentLocationId: string): string {
+  if (zone.kind === "poi") {
+    return getWorldPoi(zone.targetId)?.name ?? zone.targetId;
   }
   if (zone.kind === "location") {
-    const regionId = getRegionIdFromGridMapId(zone.mapId) ?? currentRegionId;
-    return getLocation(regionId, zone.targetId).name;
+    return getLocation(currentRegionId, zone.targetId).name;
+  }
+  if (zone.kind === "scene") {
+    const locationId = getLocationIdFromLocalGridMapId(zone.mapId) ?? currentLocationId;
+    return getLocation(currentRegionId, locationId).scenes.find((scene) => scene.id === zone.targetId)?.name ?? zone.targetId;
   }
   return zone.zoneId;
 }
 
-function applyProvinceTravelChange(game: GameState, province: WorldProvince, portalCell?: { portalTargetMapId?: string; portalTargetX?: number; portalTargetY?: number }): GameState {
-  if (!province.regionId) {
+function applyWorldPoiEnterChange(game: GameState, poi: WorldPoiConfig): GameState {
+  if (!poi.locationId) {
     return game;
   }
-  const nextRegion = getRegion(province.regionId);
-  const nextLocation = nextRegion.locations[0];
-  const nextRegionMapId = getRegionGridMapId(province.regionId);
-  const nextRegionCoord =
-    nextRegionMapId && typeof portalCell?.portalTargetX === "number" && typeof portalCell.portalTargetY === "number"
-      ? { x: portalCell.portalTargetX, y: portalCell.portalTargetY }
-      : nextRegionMapId
-        ? getDefaultGridCoord(nextRegionMapId)
-        : null;
+  const nextLocation = getLocation(poi.regionId, poi.locationId);
+  const nextMapId = poi.enterMapId ?? getLocalGridMapId(poi.locationId);
+  const nextCoord = nextMapId ? getDefaultGridCoord(nextMapId) : null;
 
   return {
     ...game,
     world: {
       ...game.world,
-      regionId: province.regionId,
+      regionId: poi.regionId,
       locationId: nextLocation.id,
       sceneId: nextLocation.scenes[0].id,
       lastTownId: nextLocation.type === "city" || nextLocation.type === "town" ? nextLocation.id : game.world.lastTownId,
-      sceneMessage: `抵达${province.name}入口，进入州域地图。`,
+      sceneMessage: `进入${poi.name} local map。`,
       navigation: {
         ...game.world.navigation,
-        activeMapId: nextRegionMapId ?? WORLD_GRID_MAP_ID,
-        positions: nextRegionMapId && nextRegionCoord ? { ...game.world.navigation.positions, [nextRegionMapId]: nextRegionCoord } : game.world.navigation.positions,
+        activeMapId: nextMapId ?? WORLD_GRID_MAP_ID,
+        positions: nextMapId && nextCoord ? { ...game.world.navigation.positions, [nextMapId]: nextCoord } : game.world.navigation.positions,
       },
     },
   };
@@ -1645,13 +1901,29 @@ function applyLocationChange(game: GameState, locationId: string): GameState {
   };
 }
 
+function applySceneChange(game: GameState, sceneId: string): GameState {
+  const nextScene = getScene(game.world.regionId, game.world.locationId, sceneId);
+  return {
+    ...game,
+    world: {
+      ...game.world,
+      sceneId,
+      sceneMessage: `来到 ${nextScene.name}。`,
+    },
+  };
+}
+
 function getTravelStartMessage(intent: TravelIntent, target: GridCoord, adjusted: boolean): string {
   const suffix = adjusted ? "目标不可走，已改往附近最近可走格。" : `目标格 ${gridCoordKey(target)}。`;
-  if (intent.kind === "province") {
-    return `你向${intent.province.name}入口行去，${suffix}`;
+  if (intent.kind === "worldPoiPreview") {
+    const poi = getWorldPoi(intent.poiId);
+    return `你向${poi?.name ?? "目标地点"}行去，${suffix}`;
   }
   if (intent.kind === "location" || intent.kind === "locationPreview") {
     return `你向${getLocation(intent.regionId, intent.locationId).name}行去，${suffix}`;
+  }
+  if (intent.kind === "localScene") {
+    return `你在 local map 内移动，${suffix}`;
   }
   return `你展开身法沿格线前行，${suffix}`;
 }
@@ -1774,13 +2046,13 @@ function handleAction(game: GameState, action: SceneAction): GameState {
     return joinSect(game);
   }
   if (action.kind === "combat" && action.targetId) {
-    return beginCombat(game, action.targetId);
+    return advanceSceneActionTime(beginCombat(game, action.targetId), action.kind);
   }
   if (action.kind === "gather") {
     if (action.rewards) {
-      return appendLog(addRewards(game, action.rewards), action.text ?? "你细心采集，收起此地灵物。");
+      return advanceSceneActionTime(appendLog(addRewards(game, action.rewards), action.text ?? "你细心采集，收起此地灵物。"), action.kind);
     }
-    return grantGatherReward(game);
+    return advanceSceneActionTime(grantGatherReward(game), action.kind);
   }
   if (action.kind === "recruitPet") {
     return recruitPet(game);
@@ -1790,9 +2062,22 @@ function handleAction(game: GameState, action: SceneAction): GameState {
   }
   if (action.kind === "treasure") {
     if (action.rewards) {
-      return appendLog(addRewards(game, action.rewards), action.text ?? "你搜寻此地，得到一份机缘。");
+      return advanceSceneActionTime(appendLog(addRewards(game, action.rewards), action.text ?? "你搜寻此地，得到一份机缘。"), action.kind);
     }
-    return grantTreasure(game);
+    return advanceSceneActionTime(grantTreasure(game), action.kind);
+  }
+  return game;
+}
+
+function advanceSceneActionTime(game: GameState, kind: SceneAction["kind"]): GameState {
+  if (kind === "combat") {
+    return advanceTime(game, { hours: COMBAT_ACTION_HOURS });
+  }
+  if (kind === "gather") {
+    return advanceTime(game, { hours: GATHER_ACTION_HOURS });
+  }
+  if (kind === "treasure") {
+    return advanceTime(game, { hours: TREASURE_ACTION_HOURS });
   }
   return game;
 }

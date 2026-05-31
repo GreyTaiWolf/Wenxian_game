@@ -9,6 +9,7 @@ import { normalizeWorldEventState } from "./time";
 export interface MapEventContext {
   mapId: string;
   coord: GridCoord;
+  locationId?: string;
 }
 
 export function maybeTriggerMapEvent(game: GameState, context: MapEventContext): GameState {
@@ -82,6 +83,9 @@ function canTriggerEvent(game: GameState, events: ReturnType<typeof normalizeWor
     return false;
   }
   if (event.regionIds && !event.regionIds.includes(game.world.regionId)) {
+    return false;
+  }
+  if (event.locationIds?.length && (!context.locationId || !event.locationIds.includes(context.locationId))) {
     return false;
   }
   if (event.minRealmId && !isRealmAtLeast(game.player.realmId, event.minRealmId)) {

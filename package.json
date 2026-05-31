@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node ./node_modules/vite/bin/vite.js build",
+    "test": "node --test tests/basic.test.mjs",
+    "quality": "npm run typecheck && npm run test && npm run build",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

@@ -2572,6 +2572,337 @@ small {
   filter: saturate(0.92) contrast(1.04);
 }
 
+.grid-map-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.grid-map-viewport {
+  height: clamp(330px, 52vh, 460px);
+  background:
+    radial-gradient(circle at 50% 48%, rgba(113, 204, 180, 0.13), transparent 58%),
+    linear-gradient(140deg, rgba(11, 20, 25, 0.96), rgba(8, 12, 18, 0.98));
+}
+
+.local-grid-map-viewport {
+  height: clamp(300px, 46vh, 390px);
+}
+
+.grid-map-canvas {
+  overflow: hidden;
+  border-radius: 6px;
+  contain: layout paint style;
+  transition: transform 90ms ease-out;
+  will-change: transform;
+  background:
+    radial-gradient(circle at 48% 50%, rgba(86, 116, 89, 0.38), transparent 42%),
+    radial-gradient(circle at 80% 32%, rgba(40, 83, 102, 0.34), transparent 26%),
+    radial-gradient(circle at 20% 58%, rgba(111, 93, 63, 0.28), transparent 30%),
+    linear-gradient(145deg, #17231f, #111821 44%, #0c1118);
+  box-shadow: inset 0 0 0 1px rgba(236, 216, 153, 0.1);
+}
+
+.world-grid-map-canvas::before,
+.local-grid-map-canvas::before,
+.grid-atmosphere-overlay {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.world-grid-map-canvas::before {
+  background:
+    radial-gradient(ellipse at 49% 18%, rgba(185, 223, 255, 0.14), transparent 18%),
+    radial-gradient(ellipse at 49% 78%, rgba(64, 151, 103, 0.24), transparent 28%),
+    radial-gradient(ellipse at 84% 45%, rgba(62, 130, 153, 0.2), transparent 24%),
+    radial-gradient(ellipse at 18% 53%, rgba(128, 91, 48, 0.24), transparent 24%);
+  opacity: 0.92;
+}
+
+.local-grid-map-canvas {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(218, 188, 105, 0.12), transparent 46%),
+    radial-gradient(circle at 24% 30%, rgba(82, 158, 128, 0.18), transparent 26%),
+    linear-gradient(145deg, #14201d, #0e151a);
+}
+
+.grid-atmosphere-overlay {
+  z-index: 1;
+  background:
+    repeating-linear-gradient(18deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 18px),
+    radial-gradient(circle at 38% 42%, rgba(194, 226, 196, 0.12), transparent 28%),
+    radial-gradient(circle at 62% 58%, rgba(131, 99, 164, 0.1), transparent 26%);
+  mix-blend-mode: screen;
+}
+
+.is-map-interacting .grid-map-canvas {
+  transition: none;
+}
+
+.grid-atmosphere-overlay.local {
+  background:
+    repeating-linear-gradient(90deg, rgba(236, 216, 153, 0.025) 0 1px, transparent 1px 22px),
+    radial-gradient(circle at 50% 50%, rgba(94, 234, 212, 0.1), transparent 38%);
+}
+
+.grid-road-overlay-svg {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.grid-road-line {
+  fill: none;
+  stroke: rgba(238, 190, 92, 0.52);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+  filter: drop-shadow(0 0 3px rgba(246, 196, 83, 0.34));
+  vector-effect: non-scaling-stroke;
+}
+
+.zoom-overview .grid-road-line {
+  opacity: 0.58;
+  stroke-width: 1;
+}
+
+.zoom-detail .grid-road-line,
+.zoom-cell .grid-road-line,
+.zoom-micro .grid-road-line {
+  opacity: 0.86;
+  stroke-width: 1.5;
+}
+
+.zoom-micro .grid-road-line {
+  stroke: rgba(255, 215, 128, 0.7);
+}
+
+.grid-terrain-cell,
+.route-step {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.grid-terrain-cell {
+  border: 1px solid rgba(236, 216, 153, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.grid-terrain-cell.terrain-road,
+.map-road-cell {
+  z-index: 2;
+  border-color: transparent;
+  background: rgba(218, 177, 83, 0.22);
+  box-shadow: 0 0 4px rgba(246, 196, 83, 0.22);
+}
+
+.grid-terrain-cell.terrain-water {
+  background: rgba(56, 126, 151, 0.2);
+}
+
+.grid-terrain-cell.terrain-mountain,
+.grid-terrain-cell.terrain-cave {
+  background: rgba(94, 82, 74, 0.24);
+}
+
+.grid-terrain-cell.terrain-forest,
+.grid-terrain-cell.terrain-valley {
+  background: rgba(53, 132, 86, 0.18);
+}
+
+.grid-terrain-cell.terrain-marsh,
+.grid-terrain-cell.terrain-forbidden {
+  background: rgba(129, 44, 58, 0.23);
+  box-shadow: inset 0 0 8px rgba(189, 48, 68, 0.18);
+}
+
+.grid-terrain-cell.terrain-desert {
+  background: rgba(150, 112, 59, 0.18);
+}
+
+.grid-terrain-cell.terrain-snow {
+  background: rgba(183, 211, 222, 0.14);
+}
+
+.grid-terrain-cell.blocked {
+  background: rgba(106, 31, 45, 0.26);
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.28);
+}
+
+.grid-terrain-cell.route,
+.route-step {
+  z-index: 3;
+  background: rgba(94, 234, 212, 0.24);
+  box-shadow: 0 0 7px rgba(94, 234, 212, 0.48);
+}
+
+.route-step.target {
+  background: rgba(246, 196, 83, 0.42);
+  box-shadow: 0 0 10px rgba(246, 196, 83, 0.62);
+}
+
+.grid-route-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.grid-map-marker-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  contain: layout paint style;
+}
+
+.grid-map-marker-overlay .grid-map-marker {
+  pointer-events: auto;
+}
+
+.grid-map-marker-overlay .world-region-label {
+  pointer-events: none;
+}
+
+.grid-map-marker-overlay .grid-player-marker {
+  pointer-events: none;
+}
+
+.grid-map-marker {
+  z-index: 5;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 52px;
+  min-height: 42px;
+  padding: 5px 7px;
+  border-radius: 999px;
+  color: #f8fffb;
+  background:
+    radial-gradient(circle at 50% 100%, rgba(94, 234, 212, 0.22), transparent 60%),
+    rgba(7, 12, 18, 0.18);
+  text-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(94, 234, 212, 0.42);
+}
+
+.grid-map-marker::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+  transform: translateX(-50%);
+}
+
+.grid-map-marker .game-icon {
+  flex: 0 0 auto;
+  opacity: 0.92;
+}
+
+.grid-map-marker span,
+.grid-map-marker small {
+  display: block;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid-map-marker small {
+  width: 100%;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.world-poi-marker.locked {
+  color: #f0c98c;
+  text-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(246, 196, 83, 0.4);
+}
+
+.world-poi-marker.poi-forbidden,
+.world-poi-marker.poi-secret {
+  color: #fca5a5;
+  text-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.92),
+    0 0 14px rgba(248, 113, 113, 0.45);
+}
+
+.world-poi-marker.poi-resource {
+  color: #bef264;
+}
+
+.world-poi-marker.main-quest {
+  color: #d9fff7;
+}
+
+.local-scene-marker {
+  color: #ffe6a3;
+  text-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.86),
+    0 0 12px rgba(246, 196, 83, 0.4);
+}
+
+.local-scene-marker.active {
+  color: var(--primary-strong);
+}
+
+.zoom-overview .grid-map-marker small,
+.zoom-overview .grid-map-marker .game-icon {
+  display: none;
+}
+
+.zoom-overview .grid-map-marker {
+  min-width: 42px;
+  padding: 3px 5px;
+  font-size: 12px;
+}
+
+.world-region-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.world-region-labels.visible {
+  opacity: 0.48;
+}
+
+.world-region-label {
+  position: absolute;
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 22px;
+  font-weight: 900;
+  text-shadow: 0 5px 18px rgba(0, 0, 0, 0.72);
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+.world-region-label small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(236, 216, 153, 0.52);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.world-poi-drawer {
+  z-index: 6;
+}
+
 .province-marker {
   position: absolute;
   z-index: 2;
@@ -2668,7 +2999,7 @@ small {
   font-weight: 800;
   line-height: 1.1;
   letter-spacing: 0;
-  transform: translate(calc(-50% + var(--label-offset-x, 0px)), calc(-50% + var(--label-offset-y, 0px))) scale(var(--marker-scale, 1));
+  transform: translate(calc(-50% + var(--label-offset-x, 0px)), calc(-50% + var(--label-offset-y, 0px)));
   transform-origin: center;
   white-space: nowrap;
 }
@@ -2676,7 +3007,7 @@ small {
 .map-zone-label:not(:disabled):hover {
   color: var(--primary-strong);
   background: transparent;
-  transform: translate(calc(-50% + var(--label-offset-x, 0px)), calc(-50% + var(--label-offset-y, 0px))) scale(var(--marker-scale, 1));
+  transform: translate(calc(-50% + var(--label-offset-x, 0px)), calc(-50% + var(--label-offset-y, 0px)));
 }
 
 .map-zone-label.active {
@@ -2721,7 +3052,7 @@ small {
     0 8px 18px rgba(0, 0, 0, 0.3);
   font-size: 12px;
   font-weight: 700;
-  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform: translate(-50%, -50%);
   transform-origin: center;
   pointer-events: none;
 }
@@ -3162,6 +3493,62 @@ small {
   padding: 12px;
 }
 
+.location-intel-card {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid rgba(94, 234, 212, 0.14);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(94, 234, 212, 0.12), transparent 36%),
+    rgba(2, 6, 23, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.location-intel-card > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.location-intel-card span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.location-intel-card strong {
+  color: #f8fafc;
+  font-size: 12px;
+}
+
+.location-intel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.location-intel-grid p {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.location-intel-grid p:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.location-intel-grid p strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .muted {
   color: var(--muted);
   line-height: 1.55;
@@ -3280,6 +3667,47 @@ button.scene-hotspot-button:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+.scene-action-card {
+  position: relative;
+  min-height: 48px;
+  overflow: hidden;
+  border-color: rgba(94, 234, 212, 0.2);
+  background:
+    linear-gradient(135deg, rgba(94, 234, 212, 0.12), transparent 48%),
+    rgba(15, 23, 42, 0.58);
+}
+
+.scene-action-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 10px 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(94, 234, 212, 0.34);
+  opacity: 0.72;
+}
+
+.scene-action-card.action-combat {
+  border-color: rgba(248, 113, 113, 0.28);
+  background:
+    linear-gradient(135deg, rgba(248, 113, 113, 0.16), transparent 52%),
+    rgba(31, 12, 18, 0.58);
+}
+
+.scene-action-card.action-gather {
+  border-color: rgba(74, 222, 128, 0.24);
+  background:
+    linear-gradient(135deg, rgba(74, 222, 128, 0.14), transparent 52%),
+    rgba(10, 26, 18, 0.58);
+}
+
+.scene-action-card.action-treasure {
+  border-color: rgba(246, 196, 83, 0.32);
+  background:
+    linear-gradient(135deg, rgba(246, 196, 83, 0.16), transparent 52%),
+    rgba(29, 23, 8, 0.58);
 }
 
 .scene-message {
@@ -5058,6 +5486,37 @@ button.scene-hotspot-button:focus-visible {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.scene-hotspot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 8px;
+}
+
+.scene-hotspot-list-button {
+  display: grid;
+  gap: 2px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-color: rgba(236, 216, 153, 0.24);
+  background:
+    linear-gradient(135deg, rgba(246, 196, 83, 0.12), rgba(94, 234, 212, 0.08)),
+    rgba(15, 23, 42, 0.52);
+  color: #f8fafc;
+  text-align: left;
+}
+
+.scene-hotspot-list-button span,
+.scene-hotspot-list-button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-hotspot-list-button small {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .scene-hotspot-button {

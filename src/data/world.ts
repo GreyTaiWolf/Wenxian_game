@@ -74,6 +74,14 @@ export interface LocationNode {
   name: string;
   type: "city" | "town" | "wild" | "secret";
   description: string;
+  chapterId?: string;
+  resourceKey?: string;
+  backgroundImageKey?: string;
+  eventPoolIds?: string[];
+  enemyPoolIds?: string[];
+  dropPool?: ItemAmount[];
+  npcIds?: string[];
+  taskIds?: string[];
   sceneMapImageKey?: string;
   sceneMapHotspots?: LocationSceneHotspot[];
   sceneMapBlockedRects?: LocationSceneBlockedRect[];
@@ -400,6 +408,17 @@ export const regions: RegionNode[] = [
         name: "青云镇",
         type: "city",
         description: "中州东部依青云宗灵脉而兴的修士镇，铺坊、客栈、公告栏与灵田沿主街展开。",
+        chapterId: "chapter_01_qingyun_black_wind",
+        resourceKey: "qinyun_town",
+        backgroundImageKey: "qingyun_town",
+        eventPoolIds: ["qingyun_notice_tip", "mist_traveling_cultivator"],
+        enemyPoolIds: [],
+        dropPool: [
+          { itemId: "spirit_herb", amount: 1 },
+          { itemId: "spirit_grass_seed", amount: 1 },
+        ],
+        npcIds: ["qing_yu", "su_da", "city_manor_clerk", "qingyun_innkeeper", "chen_banxian"],
+        taskIds: ["collect_qi_grass", "hunt_black_wind", "deliver_letter"],
         sceneMapImageKey: "qingyun_town",
         sceneMapHotspots: [
           { id: "qingyun_shop_marker", label: "小小仙铺", sceneId: "xiaoxiao_shop", x: 48.81, y: 36.96, title: "杂货" },
@@ -564,10 +583,24 @@ export const regions: RegionNode[] = [
         name: "黑风山",
         type: "wild",
         description: "山路狭窄，林间常有妖兽伏击，也有妖修借黑雾遮身。",
+        chapterId: "chapter_01_qingyun_black_wind",
+        resourceKey: "black_wind_mountain",
+        backgroundImageKey: "black_wind_mountain",
+        eventPoolIds: ["wild_beast_ambush", "black_wind_bone_cache"],
+        enemyPoolIds: ["wolf_pack", "black_wind_duo"],
+        dropPool: [
+          { itemId: "beast_bone", amount: 1 },
+          { itemId: "spirit_herb", amount: 1 },
+        ],
+        npcIds: ["qingyun_innkeeper"],
+        taskIds: ["hunt_black_wind"],
         sceneMapImageKey: "black_wind_mountain",
         sceneMapHotspots: [
+          { id: "mountain_path_marker", label: "山道", sceneId: "mountain_path", x: 23.81, y: 63.04, title: "山路" },
           { id: "black_spirit_spring_marker", label: "黑灵泉", sceneId: "black_spirit_spring", x: 48.81, y: 45.65, title: "灵泉" },
+          { id: "wolf_den_marker", label: "山狼巢穴", sceneId: "wolves", x: 64.29, y: 65.22, title: "妖兽" },
           { id: "mojin_cave_marker", label: "墨金洞", sceneId: "mojin_cave", x: 79.76, y: 76.09, title: "洞窟" },
+          { id: "black_wind_camp_marker", label: "黑风营地", sceneId: "cultivators", x: 72.62, y: 36.96, title: "妖修" },
           { id: "black_wind_demon_stockade_marker", label: "黑风妖寨", sceneId: "black_wind_demon_stockade", x: 84.52, y: 45.65, title: "妖寨" },
         ],
         sceneMapBlockedRects: [

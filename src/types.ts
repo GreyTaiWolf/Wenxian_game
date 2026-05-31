@@ -98,7 +98,10 @@ export interface CalendarState {
   year: number;
   month: number;
   day: number;
+  hour: number;
+  tick: number;
   dayIndex: number;
+  tickIndex: number;
   season: SeasonId;
   solarTerm: string;
 }
@@ -261,12 +264,46 @@ export interface GridCoord {
   y: number;
 }
 
+export type GridMapLayer = "world" | "local";
+export type GridCellDistanceUnit = "li" | "meter";
+export type GridTerrain =
+  | "plain"
+  | "road"
+  | "city"
+  | "sect"
+  | "forest"
+  | "mountain"
+  | "valley"
+  | "water"
+  | "marsh"
+  | "desert"
+  | "snow"
+  | "cave"
+  | "secret"
+  | "forbidden";
+
+export type GridRoadKind = "road" | "trail" | "spirit_route";
+
+export interface GridRoadSegment {
+  id: string;
+  fromId: string;
+  toId: string;
+  kind: GridRoadKind;
+  points: GridCoord[];
+}
+
 export interface GridCell {
   x: number;
   y: number;
   walkable: boolean;
   movementCost: number;
   regionId: string;
+  terrain: GridTerrain;
+  dangerLevel: number;
+  spiritLevel: number;
+  regionTag: string;
+  climateTag: string;
+  poiId?: string;
   portalTargetMapId?: string;
   portalTargetX?: number;
   portalTargetY?: number;
@@ -274,14 +311,19 @@ export interface GridCell {
 
 export interface GridMapData {
   mapId: string;
+  layer: GridMapLayer;
+  name: string;
   width: number;
   height: number;
   cellSize: number;
+  cellDistance: number;
+  cellDistanceUnit: GridCellDistanceUnit;
   origin: Vector2;
   cells: GridCell[];
+  roadSegments: GridRoadSegment[];
 }
 
-export type GridDestinationKind = "province" | "location" | "event";
+export type GridDestinationKind = "province" | "poi" | "location" | "scene" | "event";
 
 export interface GridDestinationZone {
   mapId: string;

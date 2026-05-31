@@ -1,25 +1,26 @@
 # 地图内容与事件文档
 
-本文档记录图片地图、格子区域、城市/地点信息和后续地图事件扩展规则。新增地图事件、采集点、城市内容、剧情点或地点区域时，优先同步本文档，再检查 `docs/GAME_DESIGN.md` 与 `docs/BALANCE.md`。
+本文档记录两层格子地图、世界 POI、local map、城市/地点信息和后续地图事件扩展规则。新增地图事件、采集点、城市内容、剧情点或地点区域时，优先同步本文档，再检查 `docs/GAME_DESIGN.md` 与 `docs/BALANCE.md`。
 
 ## 地图层级
 
-当前历练地图分为三层：
+当前历练地图分为两层：
 
-- 大世界：地图 ID 为 `world`，使用 `World_map.png`，负责州域选择与州域入口信息。
-- 州域地图：中州和南疆均启用图片地图；中州地图 ID 为 `region:central`，使用 `World_map_zhonzhou2.png`；南疆地图 ID 为 `region:south_ridge`，使用 `World_map_nanjiang2.png`。
-- 地点场景：进入具体地点后，可使用卡片式场景与行动列表；青云镇、黑风山已启用三级图片地图。
+- 大世界：地图 ID 为 `world`，尺寸 `320x200`，大世界每格代表 `100` 里。大世界直接显示青云镇、黑风山、灵药谷、天玄城、青云宗、万兽山、洞府、秘境、禁地、资源点等 POI，并使用 `regionTag` / `climateTag` 表达中州、南疆、东海、西漠、北境等世界区域。
+- local map：地图 ID 统一为 `local:<locationId>`，用于城市、城镇、山脉、宗门、秘境、洞府等内部探索。城市每格约 `35` 米，城镇每格约 `50` 米，秘境每格约 `1` 里，山脉与野外每格约 `2` 里。
+- 场景图：进入具体地点后，地点内部的场景、建筑、剧情图片继续保留；青云镇、黑风山、小小仙铺、李百草草药铺等图片场景不作为大世界或 local map 主背景。
+
+中州、南疆、东海、西漠、北境不再作为可进入的中间地图层；`World_map.png`、`World_map_nanjiang2.png`、`World_map_zhonzhou2.png` 不再作为主要地图背景依赖。
 
 ## 坐标规则
 
-- 图片原始坐标按 `1536x1024` 处理。
-- 网格尺寸为 `48x32`，`cellSize = 32`。
-- 坐标使用零基准 `x,y` 格子坐标，例如 `11,6`。
-- 旧 `24x16` 存档坐标加载时按 `x*2+1, y*2+1` 迁移到新网格，保持角色落点位于原格中心附近。
-- `anchor` 是区域中心或入口参考格，不一定是玩家最终停留格。
-- 普通模式下的州域/地点文字标记放在 `anchor` 中心格；整片 zone 仍然负责点击移动后的信息命中。
+- 大世界坐标使用零基准 `x,y` 格子坐标，例如青云镇 POI 在 `142,92`。
+- local map 坐标同样使用零基准格子坐标，场景入口由 `src/data/gridMaps.ts` 根据地点场景生成。
+- 旧 `48x32`、`24x16` 图片地图坐标加载时会归一化到新大世界或对应 local map 默认坐标。
+- `anchor` 是 POI 或场景 zone 的中心/入口参考格，不一定是玩家最终停留格。
+- 普通模式下的大世界 POI 标记放在 `anchor` 附近；整片 zone 仍负责点击移动后的信息命中。
 - 玩家点击不可走格时，先修正到最近可走格，再按最终停留格判断是否命中 zone。
-- `eventIds` 和 `src/data/events.ts` 共同服务地图事件。当前版本事件由行走抵达后的通用事件引擎按地图、州域、天气、冷却和概率判定，不要求每个 zone 都手写事件 ID。
+- `eventIds` 和 `src/data/events.ts` 共同服务地图事件。当前版本事件由行走抵达后的通用事件引擎按地图、区域标签、天气、冷却和概率判定，不要求每个 zone 都手写事件 ID。
 
 ## Zone 尺寸规则
 
@@ -27,34 +28,38 @@
 
 | 类型 | 格数 | 形状 | 用途 |
 | --- | ---: | --- | --- |
-| 大世界州域入口 | 9 | `3x3` | 州域信息抽屉与确认进入 |
-| 州域地点入口 | 1 | `1x1` | 中州、南疆城市、城镇、野外和秘境地点确认入口 |
+| 大世界 POI | 1-25 | `1x1` 至 `5x5` | 城、镇、山脉、宗门、秘境、禁地、资源点预览与进入 |
+| local map 场景入口 | 9 | `3x3` | 地点内部场景、建筑、NPC 热点、采集点或战斗区 |
 | 小入口预留 | 2 | `1x2` | 后续洞口、传送阵、狭窄关隘 |
 
-## 大世界 Zone
+## 大世界 POI
 
-| zoneId | 州域 | targetId | anchor | 覆盖格 | 状态 |
+来源：`src/data/worldPois.ts`
+
+| poiId | 名称 | regionTag | 坐标 | 类型 | enterMapId |
 | --- | --- | --- | --- | --- | --- |
-| `world:province:central` | 中州 | `central` | `23,13` | `22-24,12-14` | 已开放 |
-| `world:province:east_sea` | 东海 | `east_sea` | `39,12` | `38-40,11-13` | 未开放 |
-| `world:province:west_desert` | 西漠 | `west_desert` | `8,15` | `7-9,14-16` | 未开放 |
-| `world:province:south_ridge` | 南疆 | `south_ridge` | `23,23` | `22-24,22-24` | 已开放 |
-| `world:province:north_border` | 北境 | `north_border` | `23,5` | `22-24,4-6` | 未开放 |
+| `qingyun_city` | 青云镇 | 中州 | `142,92` | 城镇 | `local:qingyun_city` |
+| `tian_xuan_gate` | 天玄城门 | 中州 | `170,88` | 城市 | `local:tian_xuan_gate` |
+| `black_wind_mountain` | 黑风山 | 中州 | `118,84` | 山脉 | `local:black_wind_mountain` |
+| `herb_valley` | 灵药谷 | 中州 | `150,110` | 山谷 | `local:herb_valley` |
+| `ancient_cave` | 古修洞府 | 中州 | `198,68` | 洞府 | `local:ancient_cave` |
+| `qingyun_sect` | 青云宗 | 中州 | `150,72` | 宗门 | 预留 |
+| `baicao_valley` | 百草谷 | 南疆 | `156,156` | 山谷 | `local:baicao_valley` |
+| `ten_thousand_beast_mountain` | 万兽山 | 南疆 | `136,144` | 山脉 | `local:ten_thousand_beast_mountain` |
+| `miasma_marsh` | 瘴雾沼泽 | 南疆 | `108,174` | 禁地/沼泽 | `local:miasma_marsh` |
+| `central_spirit_mine` | 中州灵矿 | 中州 | `176,118` | 资源点 | 预留 |
+| `southern_herb_spring` | 南疆药泉 | 南疆 | `168,168` | 资源点 | 预留 |
 
-玩家自由点击并抵达这些区域后，只自动展开州域信息抽屉。未开放州域仍显示“暂未开放”，不会进入内部地图。
+玩家自由点击并抵达大世界 POI zone 后，只自动展开地点预览卡。开放 POI 可进入对应 local map；未开放 POI 只显示保留说明、区域标签和后续内容提示。
 
-## 中州 Zone
+## Local Map Zone
 
-| zoneId | 地点 | 类型 | targetId | anchor | 覆盖格 | eventIds |
-| --- | --- | --- | --- | --- | --- | --- |
-| `central:location:qingyun_city` | 青云镇 | 城市 | `qingyun_city` | `10,12` | `10,12` | 预留 |
-| `central:location:tian_xuan_gate` | 天玄城门 | 城市 | `tian_xuan_gate` | `28,16` | `28,16` | 预留 |
-| `central:location:black_wind_mountain` | 黑风山 | 野外 | `black_wind_mountain` | `6,12` | `6,12` | 预留 |
-| `central:location:herb_valley` | 灵药谷 | 野外 | `herb_valley` | `21,25` | `21,25` | 预留 |
-| `central:location:ancient_cave` | 古修洞府 | 秘境 | `ancient_cave` | `34,5` | `34,5` | 预留 |
-| `central:location:luoxia_town` | 落霞镇 | 城镇 | `luoxia_town` | `8,24` | `8,24` | 预留 |
+| zoneId 规则 | mapId | targetId | 覆盖格 | 用途 |
+| --- | --- | --- | --- | --- |
+| `local:<locationId>:scene:<sceneId>` | `local:<locationId>` | `<sceneId>` | 场景锚点周围 `3x3` | 到达后切换地点内部场景 |
+| `world:poi:<poiId>` | `world` | `<poiId>` | 由 POI `zoneSize` 决定 | 到达后展开大世界地点预览 |
 
-玩家自由点击并抵达中州地点单格入口后，只自动展开地点信息抽屉。青云镇位于中州西侧 `10,12`，与黑风山横向相邻但仍保持单格入口；实际寻路和 zone 命中使用表内 anchor。进入地点后由地点配置决定是否使用三级图片地图，不因入口改造新增奖励、任务或战斗组。
+玩家自由点击并抵达 local map 场景 zone 后，只自动切换到对应地点内部场景；进入地点仍需要先在大世界 POI 预览卡中确认。local map 的区域、道路、不可通行格、灵气浓度和危险等级由 `src/data/gridMaps.ts` 生成，不新增奖励、任务或战斗组。
 
 ### 青云镇内部场景
 
@@ -89,13 +94,23 @@
 
 ### 黑风山内部场景
 
-黑风山进入地点后使用 `scene/black_wind_mountain.png` 作为三级场景地图。网格沿用 `42x23`；红色格为不可走地形提示，只做视觉标注，不接入 A* 寻路或存档坐标。黑灵泉到墨金洞之间保留可通行石阶路线。当前开放黑灵泉、墨金洞、黑风妖寨三个热点，战斗沿用已有山狼与黑风妖修配置，不新增敌人、掉落或奖励数值。
+黑风山进入地点后使用 `scene/black_wind_mountain.png` 作为三级场景地图。网格沿用 `42x23`；红色格为不可走地形提示，只做视觉标注，不接入 A* 寻路或存档坐标。黑灵泉到墨金洞之间保留可通行石阶路线。当前开放山道、黑灵泉、山狼巢穴、墨金洞、黑风营地和黑风妖寨热点，敌人池为 `wolf_pack / black_wind_duo`，掉落池以妖兽骨、灵草和灵石为主，任务入口由青云镇公告栏的 `hunt_black_wind` 串联。
 
 | 热点 | 场景 ID | 三级格 | 类型 | 说明 |
 | --- | --- | --- | --- | --- |
+| 山道 | `mountain_path` | `10,14` | 野外 | 黑风山入口观察点，提示山中伏击风险 |
 | 黑灵泉 | `black_spirit_spring` | `20,10` | 灵泉 | 黑雾泉眼，当前提供探查反馈 |
+| 山狼巢穴 | `wolves` | `27,15` | 妖兽战斗 | 狼群巢穴，沿用 `wolf_pack` |
 | 墨金洞 | `mojin_cave` | `33,17` | 洞窟战斗 | 洞中妖狼，沿用 `wolf_pack` |
+| 黑风营地 | `cultivators` | `30,8` | 修士战斗 | 妖修营地，沿用 `black_wind_duo` |
 | 黑风妖寨 | `black_wind_demon_stockade` | `35,10` | 妖修战斗 | 妖修营寨，沿用 `black_wind_duo` |
+
+### 第一章地点内容池
+
+| 地点 | 图片资源 | 随机事件池 | 敌人池 | 掉落池 | NPC / 任务入口 |
+| --- | --- | --- | --- | --- | --- |
+| 青云镇 | `qingyun_town`，小小仙铺 `xiaoxiao_shop`，李百草 `li_baicao_herbs` | `qingyun_notice_tip`、`mist_traveling_cultivator` | 安全区，无常规敌人 | 灵草、灵草种、少量灵石事件 | 清雨、苏达、城主府执事、陈半仙、客栈老板娘；公告栏任务 `collect_qi_grass / hunt_black_wind / deliver_letter` |
+| 黑风山 | `black_wind_mountain` | `wild_beast_ambush`、`black_wind_bone_cache` | `wolf_pack`、`black_wind_duo` | 妖兽骨、灵草、灵石、黑风任务材料 | 通过青云镇公告栏和客栈传闻接入 `hunt_black_wind` |
 
 ### 中州场景热点
 
@@ -108,7 +123,7 @@
 
 ### 场景资源与热点组件规则
 
-- 图片资源统一从 `src/data/assets.ts` 读取，地图、州域图、场景图、NPC 头像和物品图标都先登记在资源入口，业务组件不再散落硬编码路径。
+- 图片资源统一从 `src/data/assets.ts` 读取，场景图、建筑图、剧情图、NPC 头像和物品图标都先登记在资源入口，业务组件不再散落硬编码路径；大世界与 local map 的主要地图背景由 CSS 和格子数据生成。
 - 现有真实图片继续用 Vite `new URL(...)` 引入；未来内容可先登记 `/assets/...` 规划路径，但组件必须允许图片加载失败。
 - 场景图缺失时，`SceneView` 显示场景名、类型和短描述，不阻塞行动按钮、NPC 热点或文字反馈。
 - NPC 头像缺失时，`NpcDialogueSheet` 显示默认头像占位；物品图标缺失时继续使用 `GameIcon` 语义图标。
@@ -116,20 +131,20 @@
 - 热点坐标使用百分比 `x/y`，左上角为 `0%,0%`，右下角为 `100%,100%`；按钮点击区域不小于 42px。
 - 热点类型预留 `npc / shop / portal / action`，当前天玄城门和李百草 NPC 热点先接入底部对话抽屉，不改变地图寻路、奖励或任务触发。
 
-## 南疆 Zone
+## 南疆 Local Map 内容参考
 
-| zoneId | 地点 | 类型 | targetId | anchor | 覆盖格 | eventIds |
-| --- | --- | --- | --- | --- | --- | --- |
-| `south_ridge:location:wuyao_alliance` | 巫妖盟 | 城市 | `wuyao_alliance` | `25,9` | `25,9` | 预留 |
-| `south_ridge:location:wood_spirit_sect` | 木灵宗 | 城市 | `wood_spirit_sect` | `11,7` | `11,7` | 预留 |
-| `south_ridge:location:baicao_valley` | 百草谷 | 野外 | `baicao_valley` | `19,15` | `19,15` | 预留 |
-| `south_ridge:location:ten_thousand_beast_mountain` | 万妖山 | 野外 | `ten_thousand_beast_mountain` | `15,11` | `15,11` | 预留 |
-| `south_ridge:location:miasma_marsh` | 瘴雾沼泽 | 野外 | `miasma_marsh` | `9,21` | `9,21` | 预留 |
-| `south_ridge:location:thousand_falls_cliff` | 千瀑灵崖 | 秘境 | `thousand_falls_cliff` | `29,15` | `29,15` | 预留 |
-| `south_ridge:location:tide_market` | 潮汐海市 | 城镇 | `tide_market` | `39,15` | `39,15` | 预留 |
-| `south_ridge:location:returning_tide_reef` | 归潮礁岛 | 秘境 | `returning_tide_reef` | `35,25` | `35,25` | 预留 |
+| 地点 | 大世界 poiId | regionTag | local map | 说明 |
+| --- | --- | --- | --- | --- |
+| 巫妖盟 | `wuyao_alliance` | 南疆 | `local:wuyao_alliance` | 南疆盟城与坊市 |
+| 木灵宗 | `wood_spirit_sect` | 南疆 | `local:wood_spirit_sect` | 草木宗门与试炼入口 |
+| 百草谷 | `baicao_valley` | 南疆 | `local:baicao_valley` | 灵药采集与妖藤战斗 |
+| 万兽山 | `ten_thousand_beast_mountain` | 南疆 | `local:ten_thousand_beast_mountain` | 妖兽战斗与灵宠踪迹 |
+| 瘴雾沼泽 | `miasma_marsh` | 南疆 | `local:miasma_marsh` | 瘴气危险区 |
+| 千瀑灵崖 | `thousand_falls_cliff` | 南疆 | `local:thousand_falls_cliff` | 秘境与灵瀑守卫 |
+| 潮汐海市 | `tide_market` | 南疆 | `local:tide_market` | 海边坊市 |
+| 归潮礁岛 | `returning_tide_reef` | 南疆 | `local:returning_tide_reef` | 潮音秘洞与宝匣 |
 
-玩家自由点击并抵达南疆地点单格入口后，只自动展开地点信息抽屉。入口周边相邻格不会按旧多格区域自动弹出地点信息；进入地点仍需要玩家点击抽屉中的“前往”按钮。
+玩家在大世界抵达这些 POI 后展开地点预览卡；确认后进入对应 local map。旧南疆图片地图坐标只作为历史内容参考，不再作为可进入中间层。
 
 ## 后续事件规则
 
@@ -141,13 +156,30 @@
 4. 再在 `src/data` 中添加正式配置，并确保 ID 使用英文 `lower_snake_case`。
 5. 保持 zone 命中只负责“发现与弹出信息”，不要绕过地点确认直接触发收益。
 
+## 2026-05-30：场景图退场与清晰地图标注
+
+- 场景展示：地点内部不再展示 `sceneMapImageKey` 或 `imageKey` 对应的大幅场景图，统一使用 local map、场景按钮、行动按钮和 NPC 热点列表承载探索。
+- 资源入口：`src/data/assets.ts` 的 `sceneImages` 保留空表兼容旧字段，但不再通过 `new URL(...)` 静态引入场景图，避免构建继续打包青云镇、黑风山、仙铺等场景大图。
+- 地图文字：大世界和 local map 的 POI 名称、区域标签、玩家位置标记改为视口覆盖层定位，不再作为被缩放画布的一部分渲染，从视觉上修复高倍缩放字体模糊。
+- 网格显示：普通缩放状态不再显示地形格色块，路线格、道路线、POI 和当前位置仍显示；开启“网格”调试时才显示可见范围内的格子、阻挡、zone 和路径细节。
+- 规则边界：本次只改变展示和资源依赖，不改 `gridMaps`、`gridMapZones`、`roadSegments`、A* 道路优先、移动耗时、任务奖励或事件触发规则。
+
 ## 已接入地图事件（2026-05-23）
 
 | 事件 ID | 类型 | 触发范围 | 条件 | 结果 |
 | --- | --- | --- | --- | --- |
 | `mist_traveling_cultivator` | 对话 / 灵田 | 中州、南疆行走 | 7% 概率，20 天冷却 | 可交谈获得灵草种。 |
-| `wild_beast_ambush` | 战斗 | 中州行走 | 5.5% 概率，18 天冷却 | 可选择狼群战斗或避开。 |
+| `qingyun_notice_tip` | 任务 / 奖励 | 青云镇 | 10% 概率，12 天冷却 | 阅读旧悬赏，获得黑风山线索和少量灵石。 |
+| `wild_beast_ambush` | 战斗 | 黑风山 | 5.5% 概率，18 天冷却 | 可选择狼群战斗或避开。 |
+| `black_wind_bone_cache` | 机缘 / 战斗 | 黑风山 | 12% 概率，10 天冷却 | 可收起妖兽骨，或追踪脚印触发狼群战斗。 |
 | `spirit_rain_seedfall` | 灵田 / 对话 | 中州、南疆行走 | 灵雨或灵潮天气，18% 概率，45 天冷却 | 可获得凝气草种与灵泉水。 |
 | `starfall_omen` | 天象 / 机缘 | 全地图行走 | 2.5% 概率，120 天冷却，最多 3 次 | 可触发星陨天气并获得五色息壤。 |
 
 事件触发后会打开底部事件抽屉，由玩家选择交谈、战斗、采集、观测或离开。战斗事件接入现有战斗组，不在地图命中瞬间直接结算奖励。
+## 2026-05-28：世界道路网络与 12x 微观缩放
+
+- 大世界和 local map 的格子地图最大缩放为 `12x`；图片场景地图不跟随本次扩大，仍保持原有场景图交互规则。
+- 大世界道路网络由 `src/data/gridMaps.ts` 的 `worldRoadPairs` 与 `roadSegments` 维护，所有 `src/data/worldPois.ts` 中的 POI 至少接入一条道路。新增世界 POI 时必须同时补一条道路连接，避免出现孤立点。
+- 当前主干覆盖：青云镇连接青云宗、黑风山、天玄城、灵药谷、落霞镇；天玄城连接古洞府和中州灵矿；落霞镇连接西漠禁地；灵药谷连接百草谷；巫妖盟连接木灵宗、百草谷、南疆药泉和潮汐海市；百草谷连接万兽山、瘴雾沼泽、千瀑灵崖和南疆药泉；潮汐海市连接东海航线与归潮礁岛；古洞府连接北境雪原，北境雪原回接青云宗。
+- 道路表现规则：缩小时用淡金色 SVG 线条显示区域主干路；高倍缩放进入微观格子层后，具体道路格会继续以道路地形底色显示，路线格、玩家标记、目标高亮叠加在其上。
+- 寻路规则：A* 独立使用道路优先代价，倾向小幅绕路走已配置道路；移动耗时仍按地图 `cellDistance` 与目标格 `movementCost` 计算，不把道路偏好直接变成移动时间折扣。

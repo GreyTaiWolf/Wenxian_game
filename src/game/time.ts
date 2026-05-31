@@ -3,8 +3,11 @@ import {
   CALENDAR_DAYS_PER_YEAR,
   CALENDAR_ERA_ID,
   CALENDAR_ERA_NAME,
+  CALENDAR_HOURS_PER_DAY,
   CALENDAR_MONTHS_PER_YEAR,
   CALENDAR_NAME,
+  CALENDAR_TICKS_PER_DAY,
+  CALENDAR_TICKS_PER_HOUR,
   calendarMonthNames,
   solarTerms,
 } from "../data/time";
@@ -17,22 +20,37 @@ export interface CalendarDate {
   year: number;
   month: number;
   day: number;
+  hour?: number;
+  tick?: number;
+  tickIndex?: number;
+}
+
+export interface TimeDuration {
+  days?: number;
+  hours?: number;
+  ticks?: number;
 }
 
 export function normalizeCalendarDate(input: Partial<CalendarState> | Partial<CalendarDate> | undefined): CalendarState {
+  if (typeof input?.tickIndex === "number" && Number.isFinite(input.tickIndex)) {
+    return fromTickIndex(input.tickIndex);
+  }
   const year = Math.max(1, Math.floor(input?.year ?? 1));
   const month = clamp(Math.floor(input?.month ?? 1), 1, CALENDAR_MONTHS_PER_YEAR);
   const day = clamp(Math.floor(input?.day ?? 1), 1, CALENDAR_DAYS_PER_MONTH);
-  return enrichCalendarDate({ year, month, day });
+  const hour = clamp(Math.floor(input?.hour ?? input?.tick ?? 0), 0, CALENDAR_HOURS_PER_DAY - 1);
+  return enrichCalendarDate({ year, month, day, hour });
 }
 
-export function advanceTime(game: GameState, days: number, reason?: string): GameState {
-  const safeDays = Math.max(0, Math.floor(days));
-  if (safeDays <= 0) {
+export function advanceTime(game: GameState, duration: number | TimeDuration, reason?: string): GameState {
+  const safeTicks = toGameTicks(duration);
+  if (safeTicks <= 0) {
     return game;
   }
-  const nextAge = game.player.age + safeDays / (CALENDAR_DAYS_PER_MONTH * CALENDAR_MONTHS_PER_YEAR);
-  const nextDate = addDays(game.world.calendar, safeDays);
+  const currentCalendar = normalizeCalendarDate(game.world.calendar);
+  const nextAge = game.player.age + safeTicks / (CALENDAR_TICKS_PER_DAY * CALENDAR_DAYS_PER_MONTH * CALENDAR_MONTHS_PER_YEAR);
+  const nextDate = addTicks(currentCalendar, safeTicks);
+  const elapsedDays = Math.max(0, nextDate.dayIndex - currentCalendar.dayIndex);
   const nextGame: GameState = advanceSpiritFieldByDays({
     ...game,
     player: {
@@ -45,13 +63,17 @@ export function advanceTime(game: GameState, days: number, reason?: string): Gam
       weather: advanceWeatherState(game.world.weather, nextDate.dayIndex),
       events: tickWorldEventState(game.world.events, nextDate.dayIndex),
     },
-  }, safeDays);
+  }, elapsedDays);
   return reason ? appendLog(nextGame, reason) : nextGame;
 }
 
 export function addDays(date: CalendarState | CalendarDate, days: number): CalendarState {
-  const totalDays = Math.max(0, toDayIndex(date) + Math.floor(days));
-  return fromDayIndex(totalDays);
+  return addTicks(date, Math.floor(days) * CALENDAR_TICKS_PER_DAY);
+}
+
+export function addTicks(date: CalendarState | CalendarDate, ticks: number): CalendarState {
+  const totalTicks = Math.max(0, toTickIndex(date) + Math.floor(ticks));
+  return fromTickIndex(totalTicks);
 }
 
 export function formatCalendar(date: CalendarState | CalendarDate): string {
@@ -103,11 +125,37 @@ export function toDayIndex(date: CalendarState | CalendarDate): number {
 
 export function fromDayIndex(index: number): CalendarState {
   const safeIndex = Math.max(0, Math.floor(index));
+  return fromTickIndex(safeIndex * CALENDAR_TICKS_PER_DAY);
+}
+
+export function toTickIndex(date: CalendarState | CalendarDate): number {
+  if (typeof date.tickIndex === "number" && Number.isFinite(date.tickIndex)) {
+    return Math.max(0, Math.floor(date.tickIndex));
+  }
+  const hour = clamp(Math.floor(date.hour ?? date.tick ?? 0), 0, CALENDAR_HOURS_PER_DAY - 1);
+  return toDayIndex(date) * CALENDAR_TICKS_PER_DAY + hour * CALENDAR_TICKS_PER_HOUR;
+}
+
+export function fromTickIndex(index: number): CalendarState {
+  const safeTickIndex = Math.max(0, Math.floor(index));
+  const safeIndex = Math.floor(safeTickIndex / CALENDAR_TICKS_PER_DAY);
   const year = Math.floor(safeIndex / CALENDAR_DAYS_PER_YEAR) + 1;
   const remainYear = safeIndex % CALENDAR_DAYS_PER_YEAR;
   const month = Math.floor(remainYear / CALENDAR_DAYS_PER_MONTH) + 1;
   const day = (remainYear % CALENDAR_DAYS_PER_MONTH) + 1;
-  return enrichCalendarDate({ year, month, day });
+  const tickOfDay = safeTickIndex % CALENDAR_TICKS_PER_DAY;
+  const hour = Math.floor(tickOfDay / CALENDAR_TICKS_PER_HOUR);
+  return enrichCalendarDate({ year, month, day, hour });
+}
+
+export function toGameTicks(duration: number | TimeDuration): number {
+  if (typeof duration === "number") {
+    return Math.max(0, Math.floor(duration * CALENDAR_TICKS_PER_DAY));
+  }
+  const days = Math.max(0, duration.days ?? 0);
+  const hours = Math.max(0, duration.hours ?? 0);
+  const ticks = Math.max(0, duration.ticks ?? 0);
+  return Math.floor(days * CALENDAR_TICKS_PER_DAY + hours * CALENDAR_TICKS_PER_HOUR + ticks);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -116,12 +164,17 @@ function clamp(value: number, min: number, max: number): number {
 
 function enrichCalendarDate(date: CalendarDate): CalendarState {
   const dayIndex = toDayIndex(date);
+  const hour = clamp(Math.floor(date.hour ?? date.tick ?? 0), 0, CALENDAR_HOURS_PER_DAY - 1);
+  const tick = hour * CALENDAR_TICKS_PER_HOUR;
   return {
     eraId: CALENDAR_ERA_ID,
     eraName: CALENDAR_ERA_NAME,
     calendarName: CALENDAR_NAME,
     ...date,
+    hour,
+    tick,
     dayIndex,
+    tickIndex: dayIndex * CALENDAR_TICKS_PER_DAY + tick,
     season: getSeason(date.month),
     solarTerm: getSolarTerm(date.month, date.day),
   };

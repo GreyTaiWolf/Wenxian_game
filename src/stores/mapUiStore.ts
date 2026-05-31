@@ -1,13 +1,13 @@
 import { create } from "zustand";
 import type { GridCoord } from "../types";
-import type { WorldProvince } from "../data/worldMap";
 
-export type ExploreView = "world" | "region" | "location";
+export type ExploreView = "world" | "location";
 export type TravelIntent =
   | { kind: "free" }
-  | { kind: "province"; province: WorldProvince }
+  | { kind: "worldPoiPreview"; poiId: string }
   | { kind: "locationPreview"; regionId: string; locationId: string }
-  | { kind: "location"; regionId: string; locationId: string };
+  | { kind: "location"; regionId: string; locationId: string }
+  | { kind: "localScene"; locationId: string; sceneId: string };
 export type LocationTravelIntent = Extract<TravelIntent, { kind: "locationPreview" | "location" }>;
 
 export interface ActiveTravel {
@@ -28,16 +28,14 @@ export interface MapViewportState {
 
 interface MapUiStoreState {
   view: ExploreView;
-  selectedProvinceId: string | null;
-  selectedRegionMarkerId: string | null;
+  selectedWorldPoiId: string | null;
   activeSceneHotspotId: string | null;
   debugOpen: boolean;
   debugResult: string | null;
   travel: ActiveTravel | null;
   viewportByMapId: Record<string, MapViewportState>;
   setView: (view: ExploreView) => void;
-  setSelectedProvinceId: (id: string | null) => void;
-  setSelectedRegionMarkerId: (id: string | null) => void;
+  setSelectedWorldPoiId: (id: string | null) => void;
   setActiveSceneHotspotId: (id: string | null) => void;
   setDebugOpen: (open: boolean) => void;
   toggleDebug: () => void;
@@ -54,16 +52,14 @@ export const defaultMapViewport: MapViewportState = {
 
 export const useMapUiStore = create<MapUiStoreState>((set) => ({
   view: "world",
-  selectedProvinceId: null,
-  selectedRegionMarkerId: null,
+  selectedWorldPoiId: null,
   activeSceneHotspotId: null,
   debugOpen: false,
   debugResult: null,
   travel: null,
   viewportByMapId: {},
   setView: (view) => set({ view }),
-  setSelectedProvinceId: (selectedProvinceId) => set({ selectedProvinceId }),
-  setSelectedRegionMarkerId: (selectedRegionMarkerId) => set({ selectedRegionMarkerId }),
+  setSelectedWorldPoiId: (selectedWorldPoiId) => set({ selectedWorldPoiId }),
   setActiveSceneHotspotId: (activeSceneHotspotId) => set({ activeSceneHotspotId }),
   setDebugOpen: (debugOpen) => set({ debugOpen }),
   toggleDebug: () => set((state) => ({ debugOpen: !state.debugOpen })),

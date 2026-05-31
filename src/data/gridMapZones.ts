@@ -1,37 +1,46 @@
-import type { GridCoord, GridDestinationKind, GridDestinationZone } from "../types";
-import {
-  CENTRAL_GRID_MAP_ID,
-  GRID_MAP_HEIGHT,
-  GRID_MAP_WIDTH,
-  SOUTH_RIDGE_GRID_MAP_ID,
-  WORLD_GRID_MAP_ID,
-  centralLocationCoords,
-  southRidgeLocationCoords,
-  worldProvincePortals,
-} from "./gridMaps";
-import { getRegion, type LocationNode } from "./world";
-import { worldProvinces, type WorldProvince } from "./worldMap";
+import type { GridCoord, GridDestinationKind, GridDestinationZone, GridMapData } from "../types";
+import { getGridMapData, getLocalGridMapId, getLocalSceneGridCoord, WORLD_GRID_MAP_ID } from "./gridMaps";
+import { regions } from "./world";
+import { worldPois, type WorldPoiConfig } from "./worldPois";
 
 interface ZoneShape {
   width: number;
   height: number;
 }
 
-export const worldProvinceZoneShape: ZoneShape = { width: 3, height: 3 };
-
-export const regionLocationZoneShapes: Record<LocationNode["type"], ZoneShape> = {
-  city: { width: 1, height: 1 },
-  town: { width: 1, height: 1 },
-  wild: { width: 1, height: 1 },
-  secret: { width: 1, height: 1 },
-};
-
-export const smallEntranceZoneShape: ZoneShape = { width: 1, height: 2 };
+const localSceneZoneShape: ZoneShape = { width: 3, height: 3 };
 
 export const gridDestinationZones: GridDestinationZone[] = [
-  ...worldProvinces.map(createWorldProvinceZone),
-  ...getRegion("central").locations.map((location) => createRegionLocationZone(location, "central", CENTRAL_GRID_MAP_ID, centralLocationCoords)),
-  ...getRegion("south_ridge").locations.map((location) => createRegionLocationZone(location, "south_ridge", SOUTH_RIDGE_GRID_MAP_ID, southRidgeLocationCoords)),
+  ...worldPois.map(createWorldPoiZone),
+  ...regions.flatMap((region) =>
+    region.locations.flatMap((location) => {
+      const mapId = getLocalGridMapId(location.id);
+      if (!mapId) {
+        return [];
+      }
+      const map = getGridMapData(mapId);
+      if (!map) {
+        return [];
+      }
+      const zones: GridDestinationZone[] = [];
+      location.scenes.forEach((scene) => {
+        const anchor = getLocalSceneGridCoord(location.id, scene.id);
+        if (!anchor) {
+          return;
+        }
+        zones.push({
+          mapId,
+          zoneId: `${location.id}:scene:${scene.id}`,
+          kind: "scene",
+          targetId: scene.id,
+          anchor,
+          cells: createZoneCells(anchor, localSceneZoneShape, map),
+          eventIds: [],
+        });
+      });
+      return zones;
+    }),
+  ),
 ];
 
 export function getGridDestinationZones(mapId: string): GridDestinationZone[] {
@@ -59,51 +68,21 @@ export function isGridCoordInZone(zone: GridDestinationZone, coord: GridCoord): 
   return zone.cells.some((cell) => cell.x === coord.x && cell.y === coord.y);
 }
 
-function createWorldProvinceZone(province: WorldProvince): GridDestinationZone {
-  const anchor = getWorldProvinceAnchor(province);
+function createWorldPoiZone(poi: WorldPoiConfig): GridDestinationZone {
+  const map = getGridMapData(WORLD_GRID_MAP_ID);
   return {
     mapId: WORLD_GRID_MAP_ID,
-    zoneId: `world:province:${province.id}`,
-    kind: "province",
-    targetId: province.id,
-    anchor,
-    cells: createZoneCells(anchor, worldProvinceZoneShape),
+    zoneId: `world:poi:${poi.id}`,
+    kind: "poi",
+    targetId: poi.id,
+    anchor: poi.coord,
+    cells: map ? createZoneCells(poi.coord, poi.zoneSize, map) : [poi.coord],
   };
 }
 
-function createRegionLocationZone(
-  location: LocationNode,
-  regionId: string,
-  mapId: string,
-  locationCoords: Record<string, GridCoord>,
-): GridDestinationZone {
-  const anchor = locationCoords[location.id];
-  const shape = regionLocationZoneShapes[location.type];
-  return {
-    mapId,
-    zoneId: `${regionId}:location:${location.id}`,
-    kind: "location",
-    targetId: location.id,
-    anchor,
-    cells: createZoneCells(anchor, shape),
-    eventIds: [],
-  };
-}
-
-function getWorldProvinceAnchor(province: WorldProvince): GridCoord {
-  const portalAnchor = worldProvincePortals[province.regionId ?? province.id];
-  if (portalAnchor) {
-    return portalAnchor;
-  }
-  return {
-    x: clamp(Math.floor((province.marker.x / 100) * GRID_MAP_WIDTH), 0, GRID_MAP_WIDTH - 1),
-    y: clamp(Math.floor((province.marker.y / 100) * GRID_MAP_HEIGHT), 0, GRID_MAP_HEIGHT - 1),
-  };
-}
-
-function createZoneCells(anchor: GridCoord, shape: ZoneShape): GridCoord[] {
-  const left = clamp(anchor.x - Math.floor(shape.width / 2), 0, GRID_MAP_WIDTH - shape.width);
-  const top = clamp(anchor.y - Math.floor(shape.height / 2), 0, GRID_MAP_HEIGHT - shape.height);
+function createZoneCells(anchor: GridCoord, shape: ZoneShape, map: GridMapData): GridCoord[] {
+  const left = clamp(anchor.x - Math.floor(shape.width / 2), 0, map.width - shape.width);
+  const top = clamp(anchor.y - Math.floor(shape.height / 2), 0, map.height - shape.height);
   const cells: GridCoord[] = [];
 
   for (let y = top; y < top + shape.height; y += 1) {

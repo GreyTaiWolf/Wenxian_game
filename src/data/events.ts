@@ -22,6 +22,7 @@ export interface WorldEventConfig {
   description: string;
   mapIds?: string[];
   regionIds?: string[];
+  locationIds?: string[];
   minRealmId?: string;
   requiredWeatherIds?: WeatherId[];
   chance: number;
@@ -37,6 +38,7 @@ export const worldEvents: WorldEventConfig[] = [
     type: "dialogue",
     description: "薄雾里有一名散修倚石调息，腰间药囊散出淡淡草木气。",
     regionIds: ["central", "south_ridge"],
+    locationIds: ["qingyun_city", "herb_valley", "baicao_valley", "wood_spirit_sect"],
     chance: 0.07,
     cooldownDays: 20,
     choices: [
@@ -63,6 +65,7 @@ export const worldEvents: WorldEventConfig[] = [
     type: "combat",
     description: "山林忽然一静，几双幽绿兽瞳从乱石后亮起。",
     regionIds: ["central"],
+    locationIds: ["black_wind_mountain"],
     chance: 0.055,
     cooldownDays: 18,
     choices: [
@@ -78,6 +81,62 @@ export const worldEvents: WorldEventConfig[] = [
         label: "收敛气息",
         kind: "dismiss",
         text: "你收敛气息，贴着山石绕开了妖兽伏击。",
+      },
+    ],
+  },
+  {
+    id: "qingyun_notice_tip",
+    title: "公告栏旧纸",
+    type: "quest",
+    description: "青云镇公告栏边角压着一张旧悬赏，墨迹提到黑风山近来妖狼聚集。",
+    regionIds: ["central"],
+    locationIds: ["qingyun_city"],
+    chance: 0.1,
+    cooldownDays: 12,
+    choices: [
+      {
+        id: "read_notice",
+        label: "细读旧纸",
+        kind: "reward",
+        text: "你记下黑风山妖狼巢的位置，顺手得了几块压纸灵石。",
+        rewards: {
+          spiritStones: 18,
+        },
+        setFlags: ["read_black_wind_notice"],
+      },
+      {
+        id: "leave",
+        label: "暂且不看",
+        kind: "dismiss",
+        text: "你压下好奇，先把镇中事务处理完。",
+      },
+    ],
+  },
+  {
+    id: "black_wind_bone_cache",
+    title: "山道残骨",
+    type: "treasure",
+    description: "黑松根下露出几截妖兽骨，附近还有被翻乱的脚印。",
+    regionIds: ["central"],
+    locationIds: ["black_wind_mountain"],
+    chance: 0.12,
+    cooldownDays: 10,
+    choices: [
+      {
+        id: "collect_bone",
+        label: "收起残骨",
+        kind: "reward",
+        text: "你确认周围暂时安全，收起能用来交差和炼器的妖兽骨。",
+        rewards: {
+          items: [{ itemId: "beast_bone", amount: 1 }],
+        },
+      },
+      {
+        id: "track",
+        label: "追踪脚印",
+        kind: "combat",
+        targetId: "wolf_pack",
+        text: "你循着脚印追入林中，雾里忽然亮起数双兽瞳。",
       },
     ],
   },

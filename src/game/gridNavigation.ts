@@ -7,6 +7,8 @@ const cardinalDirections: GridCoord[] = [
   { x: -1, y: 0 },
 ];
 
+const MIN_GRID_PATH_STEP_COST = 0.55;
+
 export interface GridNavigationSelfTestResult {
   ok: boolean;
   summary: string;
@@ -41,6 +43,39 @@ export function getGridCell(map: GridMapData, coord: GridCoord): GridCell | unde
 
 export function isGridCellWalkable(map: GridMapData, coord: GridCoord): boolean {
   return getGridCell(map, coord)?.walkable ?? false;
+}
+
+export function getGridPathStepCost(cell: GridCell): number {
+  if (cell.terrain === "road") {
+    return 0.55;
+  }
+  if (cell.poiId || cell.terrain === "city" || cell.terrain === "sect") {
+    return 0.75;
+  }
+
+  switch (cell.terrain) {
+    case "plain":
+      return 1.15;
+    case "valley":
+      return 1.35;
+    case "forest":
+      return 1.65;
+    case "mountain":
+    case "desert":
+    case "snow":
+      return 1.85;
+    case "cave":
+    case "secret":
+      return 2.15;
+    case "water":
+      return 2.45;
+    case "marsh":
+      return 2.7;
+    case "forbidden":
+      return 3.2;
+    default:
+      return Math.max(1, cell.movementCost);
+  }
 }
 
 export function worldPositionToGridCoord(map: GridMapData, position: Vector2): GridCoord {
@@ -111,7 +146,7 @@ export function findPathAStar(map: GridMapData, startCoord: GridCoord, targetCoo
   const open: GridCoord[] = [start];
   const cameFrom = new Map<string, string>();
   const gScore = new Map<string, number>([[gridCoordKey(start), 0]]);
-  const fScore = new Map<string, number>([[gridCoordKey(start), heuristic(start, target)]]);
+  const fScore = new Map<string, number>([[gridCoordKey(start), heuristic(start, target) * MIN_GRID_PATH_STEP_COST]]);
 
   while (open.length > 0) {
     open.sort((left, right) => {
@@ -137,7 +172,7 @@ export function findPathAStar(map: GridMapData, startCoord: GridCoord, targetCoo
 
       const currentKey = gridCoordKey(current);
       const neighborKey = gridCoordKey(neighbor);
-      const tentativeGScore = (gScore.get(currentKey) ?? Number.POSITIVE_INFINITY) + Math.max(1, neighborCell.movementCost);
+      const tentativeGScore = (gScore.get(currentKey) ?? Number.POSITIVE_INFINITY) + getGridPathStepCost(neighborCell);
 
       if (tentativeGScore >= (gScore.get(neighborKey) ?? Number.POSITIVE_INFINITY)) {
         continue;
@@ -145,7 +180,7 @@ export function findPathAStar(map: GridMapData, startCoord: GridCoord, targetCoo
 
       cameFrom.set(neighborKey, currentKey);
       gScore.set(neighborKey, tentativeGScore);
-      fScore.set(neighborKey, tentativeGScore + heuristic(neighbor, target));
+      fScore.set(neighborKey, tentativeGScore + heuristic(neighbor, target) * MIN_GRID_PATH_STEP_COST);
 
       if (!open.some((coord) => isSameGridCoord(coord, neighbor))) {
         open.push(neighbor);

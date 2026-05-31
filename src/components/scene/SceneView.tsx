@@ -1,11 +1,10 @@
-import { useState, type ReactNode } from "react";
-import { SceneHotspot, type SceneHotspotModel } from "./SceneHotspot";
+import { type ReactNode } from "react";
+import { type SceneHotspotModel } from "./SceneHotspot";
 
 export function SceneView({
   name,
   type,
   description,
-  imageSrc,
   hotspots = [],
   feedback,
   actions,
@@ -20,31 +19,22 @@ export function SceneView({
   actions?: ReactNode;
   onHotspotSelect?: (hotspot: SceneHotspotModel) => void;
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const hasImage = Boolean(imageSrc) && !imageFailed;
-
   return (
     <section className="scene-view">
-      {hasImage ? (
-        <div className="scene-visual-frame">
-          <img
-            alt={name}
-            className="scene-visual"
-            draggable={false}
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            src={imageSrc ?? ""}
-          />
+      <div className="scene-image-fallback">
+        <strong>{name}</strong>
+        <span>{description}</span>
+      </div>
+      {hotspots.length ? (
+        <div className="scene-hotspot-list">
           {hotspots.map((hotspot) => (
-            <SceneHotspot key={hotspot.id} hotspot={hotspot} onSelect={onHotspotSelect ?? (() => undefined)} />
+            <button className={`scene-hotspot-list-button hotspot-${hotspot.type ?? "action"}`} key={hotspot.id} onClick={() => onHotspotSelect?.(hotspot)} type="button">
+              <span>{hotspot.label}</span>
+              {hotspot.title ?? hotspot.text ? <small>{hotspot.title ?? hotspot.text}</small> : null}
+            </button>
           ))}
         </div>
-      ) : (
-        <div className="scene-image-fallback">
-          <strong>{name}</strong>
-          <span>{description}</span>
-        </div>
-      )}
+      ) : null}
       <div className="scene-view-copy">
         <small>{type ? `${type}场景` : "场景"}</small>
         <h3>{name}</h3>
