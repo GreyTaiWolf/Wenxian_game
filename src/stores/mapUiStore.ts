@@ -7,7 +7,8 @@ export type TravelIntent =
   | { kind: "worldPoiPreview"; poiId: string }
   | { kind: "locationPreview"; regionId: string; locationId: string }
   | { kind: "location"; regionId: string; locationId: string }
-  | { kind: "localScene"; locationId: string; sceneId: string };
+  | { kind: "localScene"; locationId: string; sceneId: string; openOnArrival?: boolean }
+  | { kind: "localNpc"; locationId: string; sceneId: string; npcId: string };
 export type LocationTravelIntent = Extract<TravelIntent, { kind: "locationPreview" | "location" }>;
 
 export interface ActiveTravel {

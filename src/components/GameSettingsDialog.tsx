@@ -20,6 +20,8 @@ const ITEM_CATEGORY_LABELS: Record<ItemConfig["category"], string> = {
   material: "材料",
   quest: "任务",
   equipment: "装备",
+  blueprint: "图纸",
+  recipe: "丹方",
 };
 
 const EQUIPMENT_SLOT_LABELS: Record<EquipmentSlotId, string> = {
@@ -38,6 +40,8 @@ const ITEM_CATEGORY_OPTIONS: Array<{ value: ItemCategoryFilter; label: string }>
   { value: "pill", label: "丹药" },
   { value: "material", label: "材料" },
   { value: "quest", label: "任务" },
+  { value: "blueprint", label: "图纸" },
+  { value: "recipe", label: "丹方" },
   { value: "currency", label: "货币" },
 ];
 

@@ -5,5 +5,6 @@ export * from "./GamePanel";
 export * from "./GameToast";
 export * from "./GradeBadge";
 export * from "./ItemSlot";
+export * from "./AffixRow";
 export * from "./MotionPage";
 export * from "./StatBar";

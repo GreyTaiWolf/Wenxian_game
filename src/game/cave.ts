@@ -1,6 +1,7 @@
 import { caveBaseCultivationPerMinute, getNextSpiritArrayConfig, getSpiritArrayConfig } from "../data/cave";
+import { normalizeAlchemyState, normalizeBeastStableState, normalizeCaveRefineryState, normalizeMountYardState } from "../data/caveFacilities";
 import { getRealm } from "../data/progression";
-import type { CaveState, GameState } from "../types";
+import type { CaveState, GameState, TeamMember } from "../types";
 import { normalizeSpiritFieldState } from "./spiritField";
 import { appendLog, canAffordCost, createDefaultCaveState, describeCost, spendCost } from "./state";
 
@@ -18,13 +19,17 @@ export interface MeditationPreview {
   cappedByRealm: boolean;
 }
 
-export function normalizeCaveState(cave: Partial<CaveState> | undefined): CaveState {
+export function normalizeCaveState(cave: Partial<CaveState> | undefined, legacyTeam: TeamMember[] = []): CaveState {
   const defaults = createDefaultCaveState();
   return {
     meditationStartedAt: typeof cave?.meditationStartedAt === "string" ? cave.meditationStartedAt : defaults.meditationStartedAt,
     spiritArrayLevel: normalizeSpiritArrayLevel(cave?.spiritArrayLevel),
     totalMeditationMinutes: normalizeNonNegativeInteger(cave?.totalMeditationMinutes),
     spiritField: normalizeSpiritFieldState(cave?.spiritField),
+    alchemy: normalizeAlchemyState(cave?.alchemy),
+    refinery: normalizeCaveRefineryState(cave?.refinery),
+    beastStable: normalizeBeastStableState(cave?.beastStable, legacyTeam),
+    mountYard: normalizeMountYardState(cave?.mountYard),
   };
 }
 

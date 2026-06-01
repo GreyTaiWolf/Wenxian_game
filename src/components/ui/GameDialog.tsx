@@ -13,6 +13,7 @@ export interface GameDialogProps {
   footer?: ReactNode;
   motionEnabled?: boolean;
   className?: string;
+  overlayClassName?: string;
 }
 
 export function GameDialog({
@@ -24,7 +25,9 @@ export function GameDialog({
   footer,
   motionEnabled = true,
   className = "",
+  overlayClassName = "",
 }: GameDialogProps) {
+  const overlayClasses = `game-dialog-overlay ${overlayClassName}`.trim();
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <AnimatePresence>
@@ -33,14 +36,14 @@ export function GameDialog({
             <Dialog.Overlay asChild>
               {motionEnabled ? (
                 <motion.div
-                  className="game-dialog-overlay"
+                  className={overlayClasses}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
                 />
               ) : (
-                <div className="game-dialog-overlay" />
+                <div className={overlayClasses} />
               )}
             </Dialog.Overlay>
             <Dialog.Content asChild>

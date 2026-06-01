@@ -9,6 +9,16 @@ const worldSource = readFileSync("src/data/world.ts", "utf8");
 const worldPoiSource = readFileSync("src/data/worldPois.ts", "utf8");
 const gridMapsSource = readFileSync("src/data/gridMaps.ts", "utf8");
 const explorePanelSource = readFileSync("src/components/ExplorePanel.tsx", "utf8");
+const inventoryPanelSource = readFileSync("src/components/InventoryPanel.tsx", "utf8");
+const affixRowSource = readFileSync("src/components/ui/AffixRow.tsx", "utf8");
+const styleSource = readFileSync("src/styles.css", "utf8");
+const itemsSource = readFileSync("src/data/items.ts", "utf8");
+const npcSource = readFileSync("src/data/npcs.ts", "utf8");
+const affixPoolsSource = readFileSync("src/data/affixPools.ts", "utf8");
+const generateEquipmentSource = readFileSync("src/game/generateEquipment.ts", "utf8");
+const equipmentWorkshopSource = readFileSync("src/data/equipmentWorkshops.ts", "utf8");
+const equipmentWorkshopGameSource = readFileSync("src/game/equipmentWorkshop.ts", "utf8");
+const equipmentGameSource = readFileSync("src/game/equipment.ts", "utf8");
 
 function numericConst(name) {
   const match = timeSource.match(new RegExp(`export const ${name} = ([0-9]+)`));
@@ -233,4 +243,102 @@ test("12x grid zoom keeps visible cell rendering near the viewport", () => {
 
   assert.ok(visibleWidth * visibleHeight < 3000);
   assert.ok(visibleWidth * visibleHeight < 320 * 200);
+});
+
+test("zhao refinery workshop is bound to Zhao Tiejiang services", () => {
+  assert.match(equipmentWorkshopSource, /id: "zhao_refinery_workshop"[\s\S]*sceneId: "zhao_refinery"[\s\S]*managerNpcId: "zhao_tiejiang"[\s\S]*shopId: "zhao_refinery"/);
+  assert.match(equipmentWorkshopSource, /id: "forge_rough_iron_sword"[\s\S]*itemId: "rough_iron_sword"/);
+  assert.match(equipmentWorkshopSource, /id: "forge_low_sword"[\s\S]*itemId: "low_sword"/);
+  assert.match(npcSource, /id: "zhao_tiejiang"[\s\S]*kind: "craftEquipment"[\s\S]*workshopId: "zhao_refinery_workshop"[\s\S]*kind: "reforgeEquipment"/);
+});
+
+test("local scene click opens place panel before shop or task dialogs", () => {
+  const openSceneInteractionMatch = explorePanelSource.match(/function openSceneInteraction[\s\S]*?function openSceneHotspot/);
+  assert.ok(openSceneInteractionMatch, "openSceneInteraction should exist");
+  assert.match(openSceneInteractionMatch[0], /setActiveSceneDetailId\(sceneId\)/);
+  assert.doesNotMatch(openSceneInteractionMatch[0], /setActiveShopId\(sceneTarget\.shopId\)/);
+  assert.match(explorePanelSource, /title=\{`在\$\{scene\.name\}`\}/);
+  assert.match(explorePanelSource, /sceneNpcs\.map/);
+  const localMarkerMatch = explorePanelSource.match(/function getLocalMapMarkers[\s\S]*?function getSceneNpcs/);
+  assert.ok(localMarkerMatch, "getLocalMapMarkers should exist");
+  assert.match(localMarkerMatch[0], /if \(npc\.fixed\) \{\s*return;\s*\}/);
+  assert.doesNotMatch(localMarkerMatch[0], /detail: scene\.type/);
+  assert.doesNotMatch(localMarkerMatch[0], /detail: npc\.title/);
+});
+
+test("equipment crafting and reforge logic consume costs and preserve lock limits", () => {
+  assert.match(itemsSource, /id: "rough_iron_sword_blueprint"[\s\S]*category: "blueprint"/);
+  assert.match(itemsSource, /id: "low_sword_blueprint"[\s\S]*category: "blueprint"/);
+  assert.match(worldSource, /itemId: "rough_iron_sword_blueprint"[\s\S]*price: 24[\s\S]*stock: 1/);
+  assert.match(worldSource, /itemId: "low_sword_blueprint"[\s\S]*price: 180[\s\S]*stock: 1/);
+  assert.match(equipmentWorkshopSource, /id: "forge_rough_iron_sword"[\s\S]*blueprintItemId: "rough_iron_sword_blueprint"/);
+  assert.match(equipmentWorkshopSource, /id: "forge_low_sword"[\s\S]*blueprintItemId: "low_sword_blueprint"/);
+  assert.match(equipmentWorkshopGameSource, /export function learnEquipmentCraftRecipe/);
+  assert.match(equipmentWorkshopGameSource, /learnedEquipmentRecipes/);
+  assert.match(equipmentWorkshopGameSource, /export function craftWorkshopEquipment/);
+  assert.match(equipmentWorkshopGameSource, /isEquipmentRecipeLearned\(game, recipe\.id\)/);
+  assert.match(equipmentWorkshopGameSource, /const craftCost = getEffectiveWorkshopCraftCost\(game, workshopId, recipe\.cost\)/);
+  assert.match(equipmentWorkshopGameSource, /spendCost\(game, craftCost\)/);
+  assert.match(equipmentWorkshopGameSource, /equipmentItems: \[\.\.\.paidGame\.inventory\.equipmentItems, instance\]/);
+  assert.match(equipmentWorkshopGameSource, /export function reforgeWorkshopEquipment/);
+  assert.match(equipmentWorkshopGameSource, /getEffectiveReforgeLockLimit/);
+  assert.match(equipmentWorkshopSource, /fan: 0[\s\S]*liang: 1[\s\S]*jing: 1[\s\S]*ling: 2[\s\S]*xuan: 2[\s\S]*di: 3[\s\S]*tian: 3[\s\S]*xian: 4[\s\S]*shen: 4/);
+});
+
+test("equipment affixes carry their own grade and role metadata", () => {
+  assert.doesNotMatch(affixPoolsSource, /minQuality/);
+  const validGrades = new Set(["fan", "liang", "jing", "ling", "xuan", "di", "tian", "xian", "shen"]);
+  const validRoles = new Set(["base_stat", "combat_proc", "build_enabler", "world_utility", "progression_utility", "keystone"]);
+  const entries = [...affixPoolsSource.matchAll(/\{ id: "([^"]+)"[^}]*\}/g)];
+  assert.ok(entries.length >= 40, "Expected the full affix pool");
+
+  for (const entry of entries) {
+    const source = entry[0];
+    const grade = source.match(/grade: "([^"]+)"/)?.[1];
+    const role = source.match(/role: "([^"]+)"/)?.[1];
+    assert.ok(validGrades.has(grade), `${entry[1]} should declare a valid affix grade`);
+    assert.ok(validRoles.has(role), `${entry[1]} should declare a valid affix role`);
+  }
+
+  assert.match(affixPoolsSource, /qualityRank\[quality\] >= qualityRank\[affix\.grade\]/);
+});
+
+test("equipment affix UI reuses grade effects by affix grade", () => {
+  assert.match(affixRowSource, /grade-card/);
+  assert.match(affixRowSource, /`grade-\$\{affix\.grade\}`/);
+  assert.match(affixRowSource, /grade-chip grade-\$\{affix\.grade\}/);
+  assert.match(affixRowSource, /grade-name grade-\$\{affix\.grade\}/);
+  assert.match(affixRowSource, /itemGradeNamePrefixes\[affix\.grade\]/);
+  assert.match(inventoryPanelSource, /<AffixRow affix=\{affix\}/);
+  assert.match(explorePanelSource, /<AffixRow[\s\S]*affix=\{affix\}/);
+  assert.match(styleSource, /\.affix-row[\s\S]*min-height: 42px/);
+  assert.match(styleSource, /\.reforge-affix-list \.affix-row\.locked/);
+});
+
+test("equipment affix rolls are capped by equipment grade and weighted toward nearby grades", () => {
+  assert.match(generateEquipmentSource, /EQUIPMENT_BALANCE_VERSION = 20260601/);
+  assert.match(generateEquipmentSource, /function pickAffixByGrade/);
+  assert.match(generateEquipmentSource, /qualityRank\[equipmentQuality\] - qualityRank\[affix\.grade\]/);
+  assert.match(generateEquipmentSource, /qualityGrades\[config\.grade\]\.affixCoeff/);
+
+  const gradeRank = { fan: 0, liang: 1, jing: 2, ling: 3, xuan: 4, di: 5, tian: 6, xian: 7, shen: 8 };
+  const affixGrades = Object.fromEntries([...affixPoolsSource.matchAll(/id: "([^"]+)"[^}]*grade: "([^"]+)"/g)].map((match) => [match[1], match[2]]));
+  const allowedFor = (equipmentGrade) => Object.entries(affixGrades).filter(([, grade]) => gradeRank[grade] <= gradeRank[equipmentGrade]);
+  for (const [affixId, grade] of Object.entries(affixGrades)) {
+    assert.ok(gradeRank[grade] <= gradeRank.shen, `${affixId} should map to a known grade rank`);
+    if (gradeRank[grade] > gradeRank.ling) {
+      assert.ok(gradeRank[grade] >= gradeRank.xuan, `${affixId} above ling is treated as high-grade only`);
+    }
+  }
+  assert.ok(allowedFor("ling").every(([, grade]) => gradeRank[grade] <= gradeRank.ling), "Ling equipment should never roll xuan or higher affixes");
+  assert.ok(allowedFor("xuan").some(([affixId, grade]) => affixId === "on_hit_fire" && grade === "xuan"), "Xuan equipment can roll xuan affixes");
+  assert.ok(allowedFor("xuan").every(([, grade]) => gradeRank[grade] <= gradeRank.xuan), "Xuan equipment should never roll di or higher affixes");
+});
+
+test("equipment reforge preserves locked affixes and rerolls within the same equipment grade", () => {
+  assert.match(equipmentWorkshopGameSource, /const lockedAffixes = instance\.affixes\.filter/);
+  assert.match(equipmentWorkshopGameSource, /const affixes = \[\.\.\.lockedAffixes, \.\.\.rerolledAffixes\]/);
+  assert.match(equipmentWorkshopGameSource, /quality: instance\.quality/);
+  assert.match(equipmentGameSource, /getAffixConfig\(rawAffix\.id\)/);
+  assert.match(equipmentGameSource, /canAffixAppear\(config, realmTier, quality, slot\)/);
 });

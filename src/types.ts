@@ -21,6 +21,7 @@ export type RealmPhaseId = "early" | "middle" | "late" | "peak";
 export type ItemTierId = MajorRealmId;
 export type ItemGrade = "fan" | "liang" | "jing" | "ling" | "xuan" | "di" | "tian" | "xian" | "shen";
 export type AffixCategory = "attack" | "defense" | "resource" | "speed" | "dodge" | "crit" | "spiritSense" | "special";
+export type AffixRole = "base_stat" | "combat_proc" | "build_enabler" | "world_utility" | "progression_utility" | "keystone";
 export type AffixValueType = "flat" | "percent" | "multiplier" | "special";
 export type EquipmentSpecialEffect =
   | "on_hit_fire"
@@ -62,6 +63,8 @@ export interface ItemAffix {
   id: string;
   name: string;
   description: string;
+  grade: ItemGrade;
+  role: AffixRole;
   category?: AffixCategory;
   stat?: keyof Stats | "attackPct" | "defensePct" | "maxHpPct" | "maxSpiritPct" | "spiritSensePct" | "speedPct" | "skillDamagePct";
   type?: AffixValueType;
@@ -179,7 +182,7 @@ export interface CombatLoadout {
 export interface ItemConfig {
   id: string;
   name: string;
-  category: "currency" | "pill" | "material" | "quest" | "equipment";
+  category: "currency" | "pill" | "material" | "quest" | "equipment" | "blueprint" | "recipe";
   tier: ItemTierId;
   grade: ItemGrade;
   description: string;
@@ -356,12 +359,30 @@ export interface WorldState {
   weather: WeatherState;
   events: WorldEventState;
   shops: Record<string, ShopRuntimeState>;
+  learnedEquipmentRecipes: Record<string, boolean>;
+  npcs: NpcWorldState;
   navigation: GridNavigationState;
 }
 
 export interface ShopRuntimeState {
   cycleKey: string;
   purchases: Record<string, number>;
+}
+
+export interface NpcRuntimeState {
+  npcId: string;
+  mapId: string;
+  locationId: string;
+  poiId: string;
+  realmId: string;
+  growth: number;
+  lastUpdatedDayIndex: number;
+  targetPoiId?: string;
+  taskSeed?: string;
+}
+
+export interface NpcWorldState {
+  actors: Record<string, NpcRuntimeState>;
 }
 
 export type WorldEventType = "dialogue" | "combat" | "treasure" | "quest" | "field" | "weather";
@@ -392,10 +413,55 @@ export interface SpiritFieldPlot {
   plant: SpiritPlantInstance | null;
 }
 
-export interface SpiritFieldState {
+export interface SpiritFieldRegionState {
+  regionId: string;
   level: number;
+  unlocked: boolean;
   plots: SpiritFieldPlot[];
+}
+
+export interface SpiritFieldState {
+  activeRegionId: string;
+  regions: Record<string, SpiritFieldRegionState>;
   totalHarvests: number;
+}
+
+export interface AlchemyState {
+  furnaceLevel: number;
+  learnedRecipes: Record<string, boolean>;
+  totalCrafts: number;
+  totalFailures: number;
+}
+
+export interface CaveRefineryState {
+  level: number;
+  totalCrafts: number;
+  totalReforges: number;
+}
+
+export interface CavePetInstance {
+  petId: string;
+  level: number;
+  intimacy: number;
+  breakthrough: number;
+}
+
+export interface BeastStableState {
+  level: number;
+  pets: CavePetInstance[];
+  activePetId: string | null;
+}
+
+export interface MountInstance {
+  mountId: string;
+  level: number;
+  intimacy: number;
+}
+
+export interface MountYardState {
+  level: number;
+  mounts: MountInstance[];
+  activeMountId: string | null;
 }
 
 export interface CaveState {
@@ -403,6 +469,10 @@ export interface CaveState {
   spiritArrayLevel: number;
   totalMeditationMinutes: number;
   spiritField: SpiritFieldState;
+  alchemy: AlchemyState;
+  refinery: CaveRefineryState;
+  beastStable: BeastStableState;
+  mountYard: MountYardState;
 }
 
 export interface CombatActor extends Stats {
@@ -471,7 +541,7 @@ export interface SettingsState {
 }
 
 export interface RootSave {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4 | 5;
   recentSlotId: string | null;
   settings: SettingsState;
   slots: Array<SaveSlot | null>;

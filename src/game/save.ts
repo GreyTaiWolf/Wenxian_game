@@ -1,7 +1,9 @@
 import type { CombatActor, CombatState, GameState, RootSave, SaveSlot, SettingsState } from "../types";
 import { normalizeGridNavigationState } from "../data/gridMaps";
 import { itemGradeOrder, normalizeItemId } from "../data/items";
+import { normalizeNpcWorldState } from "../data/npcs";
 import { normalizeCaveState } from "./cave";
+import { syncActivePetToTeam } from "./beastStable";
 import { normalizeCalendarDate, normalizeWeatherState, normalizeWorldEventState } from "./time";
 import { createEquipmentInstance, normalizeInventoryState } from "./equipment";
 import { normalizeShopStates } from "./shop";
@@ -22,7 +24,7 @@ const gradePreviewItemIdPrefix = "grade_preview_sword_";
 
 export function createEmptyRootSave(): RootSave {
   return {
-    version: 3,
+    version: 5,
     recentSlotId: null,
     settings: defaultSettings,
     slots: [null, null, null],
@@ -49,7 +51,7 @@ export function normalizeRootSave(input: unknown): RootSave {
   const normalizedRoot = {
     ...createEmptyRootSave(),
     ...parsed,
-    version: 3 as const,
+    version: 5 as const,
     settings: { ...defaultSettings, ...parsed.settings },
     slots: [normalizeSlot(parsed.slots[0]), normalizeSlot(parsed.slots[1]), normalizeSlot(parsed.slots[2])],
   };
@@ -110,9 +112,8 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
     return null;
   }
   const player = normalizePlayerState(slot.game.player);
-  return {
-    ...slot,
-    game: {
+  const calendar = normalizeCalendarDate(slot.game.world?.calendar);
+  const gameWithNormalizedState: GameState = {
       ...slot.game,
       player: {
         ...player,
@@ -127,14 +128,21 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
       },
       world: {
         ...slot.game.world,
-        calendar: normalizeCalendarDate(slot.game.world?.calendar),
-        weather: normalizeWeatherState(slot.game.world?.weather, normalizeCalendarDate(slot.game.world?.calendar).dayIndex),
+        calendar,
+        weather: normalizeWeatherState(slot.game.world?.weather, calendar.dayIndex),
         events: normalizeWorldEventState(slot.game.world?.events),
         shops: normalizeShopStates(slot.game.world?.shops),
+        learnedEquipmentRecipes: normalizeLearnedEquipmentRecipes(slot.game.world?.learnedEquipmentRecipes),
+        npcs: normalizeNpcWorldState(slot.game.world?.npcs, calendar.dayIndex),
         navigation: normalizeGridNavigationState(slot.game.world?.navigation),
       },
-      cave: normalizeCaveState(slot.game.cave),
-    },
+      cave: normalizeCaveState(slot.game.cave, player.team),
+    };
+  const normalizedGame = syncActivePetToTeam(gameWithNormalizedState);
+
+  return {
+    ...slot,
+    game: normalizedGame,
   };
 }
 
@@ -157,7 +165,14 @@ function isRootSaveLike(input: unknown): input is Partial<RootSave> & Pick<RootS
     return false;
   }
   const root = input as Partial<RootSave>;
-  return [1, 2, 3].includes(Number(root.version)) && Array.isArray(root.slots);
+  return [1, 2, 3, 4, 5].includes(Number(root.version)) && Array.isArray(root.slots);
+}
+
+function normalizeLearnedEquipmentRecipes(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, learned]) => learned === true).map(([recipeId]) => [recipeId, true]));
 }
 
 function shouldInjectGradePreviewEquipment(): boolean {

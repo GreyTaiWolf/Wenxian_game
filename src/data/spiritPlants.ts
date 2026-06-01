@@ -1,4 +1,4 @@
-import type { Cost, ItemAmount, ItemGrade, ItemTierId, SpiritFieldState } from "../types";
+import type { Cost, ItemAmount, ItemGrade, ItemTierId, SpiritFieldRegionState, SpiritFieldState } from "../types";
 
 export interface SpiritPlantConfig {
   speciesId: string;
@@ -21,6 +21,15 @@ export interface SpiritFieldLevelConfig {
   maxGrade: ItemGrade;
   mutationChance: number;
   upgradeCost: Cost | null;
+}
+
+export interface SpiritFieldRegionConfig {
+  regionId: string;
+  name: string;
+  description: string;
+  defaultUnlocked: boolean;
+  growthMultiplier: number;
+  unlockCost: Cost | null;
 }
 
 export const spiritPlants: SpiritPlantConfig[] = [
@@ -187,6 +196,59 @@ export const spiritFieldLevels: SpiritFieldLevelConfig[] = [
   },
 ];
 
+export const spiritFieldRegionConfigs: SpiritFieldRegionConfig[] = [
+  {
+    regionId: "home_cave",
+    name: "本府灵田",
+    description: "洞府内最稳定的一片灵土，适合承载早期灵草与长期年份养成。",
+    defaultUnlocked: true,
+    growthMultiplier: 1,
+    unlockCost: null,
+  },
+  {
+    regionId: "herb_valley_plot",
+    name: "药谷外田",
+    description: "借百草谷余脉开出的外田，灵草类作物年份增长更稳。",
+    defaultUnlocked: false,
+    growthMultiplier: 1.08,
+    unlockCost: {
+      spiritStones: 900,
+      items: [
+        { itemId: "qi_grass_seed", amount: 1 },
+        { itemId: "spirit_spring_water", amount: 1 },
+      ],
+    },
+  },
+  {
+    regionId: "spirit_spring_plot",
+    name: "灵泉湿田",
+    description: "以灵泉水脉养出的湿田，适合高年份灵植沉淀药性。",
+    defaultUnlocked: false,
+    growthMultiplier: 1.18,
+    unlockCost: {
+      spiritStones: 1600,
+      items: [
+        { itemId: "spirit_spring_water", amount: 2 },
+        { itemId: "greenwood_essence", amount: 1 },
+      ],
+    },
+  },
+  {
+    regionId: "earth_fire_plot",
+    name: "地火暖田",
+    description: "贴近地火的高阶灵田，适合后续地脉朱果和火性灵材。",
+    defaultUnlocked: false,
+    growthMultiplier: 1.3,
+    unlockCost: {
+      spiritStones: 3200,
+      items: [
+        { itemId: "five_color_spirit_soil", amount: 1 },
+        { itemId: "demon_core_shard", amount: 2 },
+      ],
+    },
+  },
+];
+
 export function getSpiritPlant(speciesId: string): SpiritPlantConfig {
   return spiritPlants.find((plant) => plant.speciesId === speciesId) ?? spiritPlants[0];
 }
@@ -203,13 +265,29 @@ export function getNextSpiritFieldLevelConfig(level: number): SpiritFieldLevelCo
   return spiritFieldLevels.find((config) => config.level === level + 1) ?? null;
 }
 
+export function getSpiritFieldRegionConfig(regionId: string | null | undefined): SpiritFieldRegionConfig {
+  return spiritFieldRegionConfigs.find((config) => config.regionId === regionId) ?? spiritFieldRegionConfigs[0];
+}
+
 export function createDefaultSpiritFieldState(): SpiritFieldState {
+  const regions = Object.fromEntries(spiritFieldRegionConfigs.map((config) => [config.regionId, createDefaultSpiritFieldRegionState(config.regionId)]));
   return {
-    level: 0,
+    activeRegionId: spiritFieldRegionConfigs[0].regionId,
+    regions,
     totalHarvests: 0,
-    plots: Array.from({ length: spiritFieldLevels[spiritFieldLevels.length - 1].plotCount }, (_, index) => ({
-      id: `plot_${index + 1}`,
-      unlocked: index < spiritFieldLevels[0].plotCount,
+  };
+}
+
+export function createDefaultSpiritFieldRegionState(regionId: string): SpiritFieldRegionState {
+  const region = getSpiritFieldRegionConfig(regionId);
+  const levelConfig = spiritFieldLevels[0];
+  return {
+    regionId: region.regionId,
+    level: 0,
+    unlocked: region.defaultUnlocked,
+    plots: Array.from({ length: 9 }, (_, index) => ({
+      id: `${region.regionId}_plot_${index + 1}`,
+      unlocked: region.defaultUnlocked && index < levelConfig.plotCount,
       plant: null,
     })),
   };

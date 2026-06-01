@@ -8,6 +8,7 @@ export const ItemSlot = memo(function ItemSlot({
   state,
   grade,
   amount,
+  amountLabel,
   icon,
   iconName = "item",
   name,
@@ -19,6 +20,7 @@ export const ItemSlot = memo(function ItemSlot({
   state: ItemSlotState;
   grade?: ItemGrade;
   amount?: number;
+  amountLabel?: string;
   icon?: ReactNode;
   iconName?: GameIconName;
   name?: string;
@@ -36,7 +38,7 @@ export const ItemSlot = memo(function ItemSlot({
         <span className="item-slot-name">{name ?? "空"}</span>
         {description ? <small>{description}</small> : null}
       </span>
-      {amount && amount > 1 ? <span className="item-slot-amount">x{amount}</span> : null}
+      {amountLabel ? <span className="item-slot-amount">{amountLabel}</span> : amount && amount > 1 ? <span className="item-slot-amount">x{amount}</span> : null}
     </>
   );
   const classes = `item-slot item-slot-${state} ${state} ${grade ? `grade-card grade-${grade}` : ""} ${className}`.trim();

@@ -1,6 +1,8 @@
 import { formatItemName, getItem, normalizeItemId } from "../data/items";
+import { createDefaultNpcWorldState } from "../data/npcs";
 import { getNextRealm, getRealm } from "../data/progression";
 import { createDefaultGridNavigationState } from "../data/gridMaps";
+import { createDefaultAlchemyState, createDefaultBeastStableState, createDefaultCaveRefineryState, createDefaultMountYardState, getPetConfig } from "../data/caveFacilities";
 import { createDefaultSpiritFieldState } from "../data/spiritPlants";
 import { createEquipmentInstance } from "./equipment";
 import { createDefaultWeatherState, normalizeCalendarDate, normalizeWorldEventState } from "./time";
@@ -64,6 +66,10 @@ export function createDefaultCaveState(): CaveState {
     spiritArrayLevel: 0,
     totalMeditationMinutes: 0,
     spiritField: createDefaultSpiritFieldState(),
+    alchemy: createDefaultAlchemyState(),
+    refinery: createDefaultCaveRefineryState(),
+    beastStable: createDefaultBeastStableState(),
+    mountYard: createDefaultMountYardState(),
   };
 }
 
@@ -215,6 +221,8 @@ export function createNewGame(name: string): GameState {
       weather: createDefaultWeatherState(0),
       events: normalizeWorldEventState(undefined),
       shops: {},
+      learnedEquipmentRecipes: {},
+      npcs: createDefaultNpcWorldState(0),
       navigation: createDefaultGridNavigationState(),
     },
     cave: createDefaultCaveState(),
@@ -393,15 +401,20 @@ export function attemptBreakthrough(game: GameState): GameState {
 }
 
 export function recruitPet(game: GameState): GameState {
-  if (game.player.team.some((member) => member.kind === "pet")) {
+  const petConfig = getPetConfig("pet_green_fox");
+  if (!petConfig) {
+    return appendLog(game, "附近灵兽踪迹已散，暂时无法安抚。");
+  }
+  const cavePets = game.cave.beastStable?.pets ?? [];
+  if (cavePets.some((pet) => pet.petId === petConfig.id) || game.player.team.some((member) => member.kind === "pet" && member.id === petConfig.id)) {
     return appendLog(game, "青羽狐已在你身侧，无需重复安抚。");
   }
   const pet: TeamMember = {
-    id: "pet_green_fox",
-    name: "青羽狐",
+    id: petConfig.id,
+    name: petConfig.name,
     kind: "pet",
-    stats: { maxHp: 150, maxSpirit: 34, attack: 24, defense: 13, spiritSense: 0, speed: 24, dodgeRate: 0.04, critRate: 0.08, critDamage: 1.5 },
-    skillIds: ["bite", "pounce", "guard_master"],
+    stats: petConfig.baseStats,
+    skillIds: petConfig.skillIds,
   };
   return appendLog(
     {
@@ -410,6 +423,14 @@ export function recruitPet(game: GameState): GameState {
         ...game.player,
         unlocks: Array.from(new Set([...game.player.unlocks, "pet"])),
         team: [...game.player.team, pet].slice(0, 2),
+      },
+      cave: {
+        ...game.cave,
+        beastStable: {
+          ...(game.cave.beastStable ?? createDefaultBeastStableState()),
+          pets: [...cavePets, { petId: petConfig.id, level: 1, intimacy: 20, breakthrough: 0 }],
+          activePetId: petConfig.id,
+        },
       },
     },
     "青羽狐低鸣一声，愿随你同行。",

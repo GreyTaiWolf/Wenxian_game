@@ -77,6 +77,9 @@ export type GameIconName =
   | "sect-master"
   | "sect-reputation"
   | "system-alchemy"
+  | "system-mount"
+  | "system-pet"
+  | "system-refinery"
   | "system-library"
   | "system-spirit-field"
   | "team";
@@ -120,6 +123,9 @@ const iconMap: Record<GameIconName, LucideIcon> = {
   "sect-master": UserRound,
   "sect-reputation": Gem,
   "system-alchemy": CookingPot,
+  "system-mount": Compass,
+  "system-pet": Users,
+  "system-refinery": Sword,
   "system-library": BookOpen,
   "system-spirit-field": Sprout,
   team: Users,

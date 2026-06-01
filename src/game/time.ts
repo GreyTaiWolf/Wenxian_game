@@ -11,6 +11,7 @@ import {
   calendarMonthNames,
   solarTerms,
 } from "../data/time";
+import { advanceNpcWorldState } from "../data/npcs";
 import { createWeatherSnapshot, defaultWeatherId, getWeatherConfig, pickWeather, regionWeatherPools } from "../data/weather";
 import type { CalendarState, GameState, SeasonId, WeatherState, WorldEventState } from "../types";
 import { advanceSpiritFieldByDays } from "./spiritField";
@@ -62,6 +63,7 @@ export function advanceTime(game: GameState, duration: number | TimeDuration, re
       calendar: nextDate,
       weather: advanceWeatherState(game.world.weather, nextDate.dayIndex),
       events: tickWorldEventState(game.world.events, nextDate.dayIndex),
+      npcs: advanceNpcWorldState(game.world.npcs, nextDate.dayIndex),
     },
   }, elapsedDays);
   return reason ? appendLog(nextGame, reason) : nextGame;

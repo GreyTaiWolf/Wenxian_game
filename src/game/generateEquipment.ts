@@ -7,7 +7,7 @@ import { getWeaponAttackRange } from "../data/weaponAttackRanges";
 import { applyBalanceLimits, isSpiritSenseEnabled, qualityCanUseSpecialAffixes } from "./equipmentBalanceLimits";
 import type { AffixCategory, EquipmentBonus, EquipmentInstance, EquipmentSlotId, ItemAffix, ItemGrade, MajorRealmId, RealmPhaseId, Stats } from "../types";
 
-export const EQUIPMENT_BALANCE_VERSION = 20260521;
+export const EQUIPMENT_BALANCE_VERSION = 20260601;
 
 export interface GenerateEquipmentParams {
   itemId: string;
@@ -126,20 +126,20 @@ function rollAffixes(realmTier: MajorRealmId, quality: ItemGrade, slot: Equipmen
     const remaining = availableAffixes.filter((affix) => !picked.some((item) => item.id === affix.id));
     const category = pickAffixCategory(realmTier, remaining, rng);
     const categoryPool = remaining.filter((affix) => affix.category === category);
-    picked.push(randomChoice(categoryPool.length ? categoryPool : remaining, rng));
+    picked.push(pickAffixByGrade(categoryPool.length ? categoryPool : remaining, quality, rng));
   }
   const requiredSpecialCount = quality === "di" || quality === "tian" || quality === "xian" ? 1 : quality === "shen" ? 2 : 0;
   while (picked.filter((affix) => affix.special || affix.exclusive || affix.unique).length < requiredSpecialCount) {
-    const candidates = availableAffixes.filter((affix) => (affix.special || affix.exclusive || affix.unique) && !picked.some((item) => item.id === affix.id));
+    const candidates = availableAffixes.filter((affix) => isRequiredSpecialAffix(affix, quality) && !picked.some((item) => item.id === affix.id));
     if (!candidates.length) {
       break;
     }
     if (picked.length >= affixCount) {
       picked.pop();
     }
-    picked.push(randomChoice(candidates, rng));
+    picked.push(pickAffixByGrade(candidates, quality, rng));
   }
-  return picked.map((affix) => instantiateAffix(affix, realmTier, quality, rng));
+  return picked.map((affix) => instantiateAffix(affix, realmTier, rng));
 }
 
 function pickAffixCategory(realmTier: MajorRealmId, availableAffixes: EquipmentAffixConfig[], rng: () => number): AffixCategory {
@@ -161,11 +161,49 @@ function pickAffixCategory(realmTier: MajorRealmId, availableAffixes: EquipmentA
   return categories[0].category;
 }
 
-function instantiateAffix(config: EquipmentAffixConfig, realmTier: MajorRealmId, quality: ItemGrade, rng: () => number): ItemAffix {
-  const value = rollAffixValue(config, realmTier, quality, rng);
+function pickAffixByGrade(affixes: EquipmentAffixConfig[], equipmentQuality: ItemGrade, rng: () => number): EquipmentAffixConfig {
+  return weightedRandomChoice(
+    affixes,
+    (affix) => {
+      const gap = qualityRank[equipmentQuality] - qualityRank[affix.grade];
+      if (gap < 0) {
+        return 0;
+      }
+      if (gap === 0) {
+        return 18;
+      }
+      if (gap === 1) {
+        return 13;
+      }
+      if (gap === 2) {
+        return 6;
+      }
+      if (gap === 3) {
+        return 3;
+      }
+      return 1;
+    },
+    rng,
+  );
+}
+
+function isRequiredSpecialAffix(affix: EquipmentAffixConfig, quality: ItemGrade): boolean {
+  if (quality === "shen") {
+    return Boolean(affix.unique || affix.exclusive || affix.special);
+  }
+  if (quality === "xian") {
+    return Boolean(affix.exclusive || affix.special);
+  }
+  return Boolean(affix.special || affix.exclusive || affix.unique);
+}
+
+function instantiateAffix(config: EquipmentAffixConfig, realmTier: MajorRealmId, rng: () => number): ItemAffix {
+  const value = rollAffixValue(config, realmTier, rng);
   return {
     id: config.id,
     name: config.name,
+    grade: config.grade,
+    role: config.role,
     category: config.category,
     stat: config.stat,
     type: config.type,
@@ -178,12 +216,12 @@ function instantiateAffix(config: EquipmentAffixConfig, realmTier: MajorRealmId,
   };
 }
 
-function rollAffixValue(config: EquipmentAffixConfig, realmTier: MajorRealmId, quality: ItemGrade, rng: () => number): number {
+function rollAffixValue(config: EquipmentAffixConfig, realmTier: MajorRealmId, rng: () => number): number {
   const configuredRange = config.valueRange;
   const rangeRealm = getAffixRangeRealm(realmTier);
   const statRange = getBaseAffixStatRange(rangeRealm, config.stat);
   const range = configuredRange ?? statRange ?? [1, 1];
-  const coeff = configuredRange ? 1 : qualityGrades[quality].affixCoeff;
+  const coeff = configuredRange ? 1 : qualityGrades[config.grade].affixCoeff;
   const raw = range[0] * coeff + (range[1] * coeff - range[0] * coeff) * rng();
   if (config.type === "percent") {
     return roundRate(raw);
@@ -270,6 +308,22 @@ function randomInt(min: number, max: number, rng: () => number): number {
 
 function randomChoice<T>(items: T[], rng: () => number): T {
   return items[Math.floor(rng() * items.length)] ?? items[0];
+}
+
+function weightedRandomChoice<T>(items: T[], weightFor: (item: T) => number, rng: () => number): T {
+  const weightedItems = items.map((item) => ({ item, weight: Math.max(0, weightFor(item)) })).filter((entry) => entry.weight > 0);
+  if (!weightedItems.length) {
+    return randomChoice(items, rng);
+  }
+  const total = weightedItems.reduce((sum, entry) => sum + entry.weight, 0);
+  let cursor = rng() * total;
+  for (const entry of weightedItems) {
+    cursor -= entry.weight;
+    if (cursor <= 0) {
+      return entry.item;
+    }
+  }
+  return weightedItems[0].item;
 }
 
 function isDirectStat(stat: ItemAffix["stat"]): stat is keyof Stats {

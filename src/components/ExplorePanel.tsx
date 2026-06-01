@@ -10,10 +10,19 @@ import {
   gridMaps,
 } from "../data/gridMaps";
 import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZones, gridDestinationZones } from "../data/gridMapZones";
-import { COMBAT_ACTION_HOURS, GATHER_ACTION_HOURS, TREASURE_ACTION_HOURS, getGridMoveHours } from "../data/time";
-import { getEnemyGroup } from "../data/enemies";
-import { getWorldEvent } from "../data/events";
-import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
+import { COMBAT_ACTION_HOURS, GATHER_ACTION_HOURS, TREASURE_ACTION_HOURS } from "../data/time";
+import { formatItemName, getItem, itemGradeLabels, itemTierLabels, shouldEmphasizeItemGrade } from "../data/items";
+import { getEquipmentWorkshop, getEquipmentWorkshopByNpcId, getEquipmentWorkshopBySceneId, type EquipmentWorkshopConfig } from "../data/equipmentWorkshops";
+import {
+  formatNpcLocation,
+  formatNpcRealm,
+  getNpc,
+  getNpcRelations,
+  getNpcRosterGroups,
+  getNpcsForLocation,
+  type NpcActionConfig,
+  type NpcConfig,
+} from "../data/npcs";
 import {
   getLocation,
   getRegion,
@@ -25,6 +34,7 @@ import {
   type LocationSceneHotspot,
   type SceneAction,
   type SceneNode,
+  type ShopCategoryKey,
   type ShopConfig,
 } from "../data/world";
 import { getWorldPoi, getWorldPoiByLocationId, worldPois, type WorldPoiConfig } from "../data/worldPois";
@@ -42,14 +52,27 @@ import {
   worldPositionToGridCoord,
 } from "../game/gridNavigation";
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
-import { buyShopItem, getShopDisplayItems, getShopRefreshInfo } from "../game/shop";
+import { canAffordCost } from "../game/state";
+import { equipmentSlots, getEquippedEquipmentInstance } from "../game/equipment";
+import {
+  craftWorkshopEquipment,
+  formatWorkshopCost,
+  formatWorkshopItemName,
+  getEffectiveReforgeLockLimit,
+  getReforgeCost,
+  isEquipmentRecipeLearned,
+  learnEquipmentCraftRecipe,
+  reforgeWorkshopEquipment,
+} from "../game/equipmentWorkshop";
+import { buyShopItem, getShopDisplayItems, getShopRefreshInfo, type ShopDisplayItem } from "../game/shop";
+import { getActiveMountLabel, getMountedGridMoveHours } from "../game/mounts";
 import { advanceTime } from "../game/time";
-import type { GameState, GridCell, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
+import type { Cost, EquipmentInstance, EquipmentSlotId, GameState, GridCell, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
 import { useActiveGame, useSettings, useUpdateGame } from "../stores/gameStore";
 import { defaultMapViewport, useMapUiStore, type ActiveTravel, type MapViewportState, type TravelIntent } from "../stores/mapUiStore";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
-import { NpcDialogueSheet, SceneView, type SceneHotspotDialogueAction, type SceneHotspotModel } from "./scene";
-import { BottomSheet, GradeBadge } from "./ui";
+import { NpcDialogueSheet, type SceneHotspotDialogueAction, type SceneHotspotModel } from "./scene";
+import { AffixRow, BottomSheet, GameDialog, GradeBadge, ItemSlot } from "./ui";
 
 const GRID_MOVEMENT_STEP_MS = 180;
 const LOCATION_SCENE_GRID_WIDTH = 42;
@@ -61,6 +84,23 @@ const GRID_MAP_VISIBLE_PADDING = 4;
 const GRID_MAP_EDGE_PADDING = 28;
 const GRID_MAP_WHEEL_ZOOM_FACTOR = 1.18;
 const GRID_MAP_BUTTON_ZOOM_FACTOR = 1.32;
+const SHOP_MOBILE_PAGE_SIZE = 8;
+const SHOP_WIDE_PAGE_SIZE = 9;
+const SHOP_WIDE_MEDIA_QUERY = "(min-width: 640px)";
+const shopCategoryTabs: Array<{ key: ShopCategoryKey; label: string; iconName: GameIconName }> = [
+  { key: "all", label: "全部", iconName: "item" },
+  { key: "pill", label: "丹药", iconName: "item-pill" },
+  { key: "artifact", label: "法器", iconName: "equipment-artifact" },
+  { key: "material", label: "材料", iconName: "item-material" },
+  { key: "misc", label: "杂货", iconName: "module-inventory" },
+];
+const shopCategoryLabels: Record<ShopCategoryKey, string> = {
+  all: "全部",
+  pill: "丹药",
+  artifact: "法器",
+  material: "材料",
+  misc: "杂货",
+};
 type GridViewportSize = { width: number; height: number };
 type GridVisibleRect = { left: number; top: number; right: number; bottom: number };
 type ExploreChange = (next: GameState | ((prev: GameState) => GameState)) => void;
@@ -82,6 +122,12 @@ export default function ExplorePanel() {
   const setDebugResult = useMapUiStore((state) => state.setDebugResult);
   const setTravel = useMapUiStore((state) => state.setTravel);
   const [activeShopId, setActiveShopId] = useState<string | null>(null);
+  const [npcRosterOpen, setNpcRosterOpen] = useState(false);
+  const [activeNpcId, setActiveNpcId] = useState<string | null>(null);
+  const [taskBoardOpen, setTaskBoardOpen] = useState(false);
+  const [activeSceneDetailId, setActiveSceneDetailId] = useState<string | null>(null);
+  const [activeCraftWorkshopId, setActiveCraftWorkshopId] = useState<string | null>(null);
+  const [activeReforgeWorkshopId, setActiveReforgeWorkshopId] = useState<string | null>(null);
 
   if (!activeGame) {
     return null;
@@ -94,10 +140,25 @@ export default function ExplorePanel() {
   const activeSceneHotspot = scene.hotspots?.find((hotspot) => hotspot.id === activeSceneHotspotId) ?? null;
   const selectedWorldPoi = selectedWorldPoiId ? getWorldPoi(selectedWorldPoiId) ?? null : null;
   const currentWorldPoi = getWorldPoiByLocationId(game.world.locationId);
+  const activeNpc = getNpc(activeNpcId);
+  const activeSceneDetail = activeSceneDetailId ? location.scenes.find((item) => item.id === activeSceneDetailId) ?? null : null;
+  const activeSceneNpcs = activeSceneDetail ? getSceneNpcs(location, activeSceneDetail, game.world.npcs) : [];
 
   useEffect(() => {
     setActiveSceneHotspotId(null);
   }, [game.world.sceneId]);
+
+  useEffect(() => {
+    if (activeNpcId && !getNpc(activeNpcId)) {
+      setActiveNpcId(null);
+    }
+  }, [activeNpcId]);
+
+  useEffect(() => {
+    if (activeSceneDetailId && !location.scenes.some((item) => item.id === activeSceneDetailId)) {
+      setActiveSceneDetailId(null);
+    }
+  }, [activeSceneDetailId, location.id]);
 
   useEffect(() => {
     if (!travel) {
@@ -116,7 +177,7 @@ export default function ExplorePanel() {
         const movedGame = updateNavigationPosition(currentGame, travel.mapId, nextStep);
         const mapData = getGridMapData(travel.mapId);
         const stepCell = mapData ? getGridCell(mapData, nextStep) : undefined;
-        const stepHours = mapData ? getGridMoveHours(mapData, stepCell) : 0;
+        const stepHours = mapData ? getMountedGridMoveHours(currentGame, mapData, stepCell) : 0;
         return advanceTime(movedGame, { hours: stepHours });
       });
       setTravel({ ...travel, path: remainingPath });
@@ -155,7 +216,8 @@ export default function ExplorePanel() {
     setTravel({ mapId, target, path: steps, intent, adjusted: !isSameGridCoord(rawTarget, target) });
     setDebugResult(null);
     onChange((currentGame) => {
-      const message = getTravelStartMessage(intent, target, !isSameGridCoord(rawTarget, target));
+      const mountLabel = getActiveMountLabel(currentGame);
+      const message = `${getTravelStartMessage(intent, target, !isSameGridCoord(rawTarget, target))}${mountLabel ? ` ${mountLabel}随行，脚程更快。` : ""}`;
       return appendLog(updateNavigationPosition(currentGame, mapId, path[0]), message);
     });
   }
@@ -183,7 +245,23 @@ export default function ExplorePanel() {
     onChange((currentGame) => applyWorldPoiEnterChange(currentGame, poi));
   }
 
-  function travelToLocalScene(sceneId: string) {
+  function travelToLocalScene(sceneId: string, openOnArrival = false) {
+    setActiveNpcId(null);
+    setActiveSceneHotspotId(null);
+    setTaskBoardOpen(false);
+    setActiveShopId(null);
+    setActiveCraftWorkshopId(null);
+    setActiveReforgeWorkshopId(null);
+
+    if (game.world.sceneId === sceneId) {
+      if (openOnArrival) {
+        openSceneInteraction(sceneId);
+        return;
+      }
+      setActiveSceneDetailId(null);
+      return;
+    }
+
     const localMapId = getLocalGridMapId(game.world.locationId);
     const map = localMapId ? getGridMapData(localMapId) : undefined;
     const zone = localMapId ? getGridDestinationZone(localMapId, "scene", sceneId) : undefined;
@@ -191,14 +269,58 @@ export default function ExplorePanel() {
     const sceneCoord = getLocalSceneGridCoord(game.world.locationId, sceneId);
     const target = zoneTarget ?? sceneCoord;
     if (localMapId && target) {
-      startTravel(localMapId, target, { kind: "localScene", locationId: game.world.locationId, sceneId });
+      startTravel(localMapId, target, { kind: "localScene", locationId: game.world.locationId, sceneId, openOnArrival });
       return;
     }
     setScene(sceneId);
+    if (openOnArrival) {
+      openSceneInteraction(sceneId);
+    }
+  }
+
+  function travelToNpc(npcId: string) {
+    const npc = getNpc(npcId);
+    if (!npc) {
+      return;
+    }
+    const sceneId = getNpcSceneId(npc, location);
+    if (!sceneId) {
+      setNpcRosterOpen(false);
+      onChange((currentGame) => appendLog(currentGame, `${npc.name}行踪未定，暂时找不到落脚处。`));
+      return;
+    }
+    setNpcRosterOpen(false);
+    setActiveNpcId(null);
+    setActiveSceneHotspotId(null);
+    setActiveSceneDetailId(null);
+    setTaskBoardOpen(false);
+    setActiveShopId(null);
+    setActiveCraftWorkshopId(null);
+    setActiveReforgeWorkshopId(null);
+    if (game.world.sceneId === sceneId) {
+      setActiveNpcId(npc.id);
+      onChange((currentGame) => appendLog(currentGame, `你来到${getScene(currentGame.world.regionId, currentGame.world.locationId, sceneId).name}，见到了${npc.name}。`));
+      return;
+    }
+    const localMapId = getLocalGridMapId(game.world.locationId);
+    const map = localMapId ? getGridMapData(localMapId) : undefined;
+    const zone = localMapId ? getGridDestinationZone(localMapId, "scene", sceneId) : undefined;
+    const zoneTarget = map && zone ? getNearestWalkableZoneCoord(map, zone, getNavigationCoord(game, map.mapId)) : null;
+    const sceneCoord = getLocalSceneGridCoord(game.world.locationId, sceneId);
+    const target = zoneTarget ?? sceneCoord;
+    if (localMapId && target) {
+      startTravel(localMapId, target, { kind: "localNpc", locationId: game.world.locationId, sceneId, npcId: npc.id });
+      return;
+    }
+    setScene(sceneId);
+    setActiveNpcId(npc.id);
   }
 
   function setScene(sceneId: string) {
     setActiveSceneHotspotId(null);
+    setActiveSceneDetailId(null);
+    setActiveCraftWorkshopId(null);
+    setActiveReforgeWorkshopId(null);
     onChange({
       ...game,
       world: {
@@ -209,21 +331,103 @@ export default function ExplorePanel() {
     });
   }
 
-  function openSceneHotspot(hotspot: SceneHotspotModel) {
-    setActiveSceneHotspotId(hotspot.id);
-    onChange((currentGame) => appendLog(currentGame, `${hotspot.label ?? "场景"}：${hotspot.text ?? "你略作停留。"}`));
-  }
-
   function handleSceneHotspotAction(action: SceneHotspotDialogueAction, hotspot: SceneHotspotModel) {
     if (action.kind === "shop") {
       const shopId = action.shopId ?? game.world.sceneId;
       setActiveSceneHotspotId(null);
       setActiveShopId(shopId);
+      setActiveCraftWorkshopId(null);
+      setActiveReforgeWorkshopId(null);
       onChange((currentGame) => appendLog(currentGame, `${hotspot.label}为你打开货柜。`));
       return;
     }
     const fallback = "对方似乎还在斟酌。";
     onChange((currentGame) => appendLog(currentGame, `${hotspot.label} · ${action.label}：${action.text ?? fallback}`));
+  }
+
+  function handleNpcAction(npc: NpcConfig, action: NpcActionConfig) {
+    if (action.kind === "shop") {
+      setActiveNpcId(null);
+      setActiveShopId(action.shopId ?? npc.shopId ?? game.world.sceneId);
+      setActiveCraftWorkshopId(null);
+      setActiveReforgeWorkshopId(null);
+      onChange((currentGame) => appendLog(currentGame, `${npc.name}为你打开货柜。`));
+      return;
+    }
+    if (action.kind === "quest") {
+      setActiveNpcId(null);
+      setTaskBoardOpen(true);
+      setActiveCraftWorkshopId(null);
+      setActiveReforgeWorkshopId(null);
+      onChange((currentGame) => appendLog(currentGame, action.text ?? `${npc.name}带你查看可接的差事。`));
+      return;
+    }
+    if (action.kind === "craftEquipment" || action.kind === "reforgeEquipment") {
+      const workshop = getEquipmentWorkshop(action.workshopId) ?? getEquipmentWorkshopByNpcId(npc.id);
+      if (!workshop) {
+        onChange((currentGame) => appendLog(currentGame, `${npc.name}暂时没有可用的炼器台。`));
+        return;
+      }
+      setActiveNpcId(null);
+      setActiveShopId(null);
+      setTaskBoardOpen(false);
+      setActiveSceneDetailId(null);
+      if (action.kind === "craftEquipment") {
+        setActiveReforgeWorkshopId(null);
+        setActiveCraftWorkshopId(workshop.id);
+      } else {
+        setActiveCraftWorkshopId(null);
+        setActiveReforgeWorkshopId(workshop.id);
+      }
+      onChange((currentGame) => appendLog(currentGame, action.text ?? `${npc.name}领你到${workshop.name}的炉前。`));
+      return;
+    }
+    const fallback = "对方暂时没有更多安排。";
+    onChange((currentGame) => appendLog(currentGame, `${npc.name} · ${action.label}：${action.text ?? fallback}`));
+  }
+
+  function openSceneInteraction(sceneId: string) {
+    setNpcRosterOpen(false);
+    setActiveNpcId(null);
+    setActiveSceneHotspotId(null);
+    setActiveShopId(null);
+    setTaskBoardOpen(false);
+    setActiveCraftWorkshopId(null);
+    setActiveReforgeWorkshopId(null);
+    setActiveSceneDetailId(sceneId);
+  }
+
+  function openSceneHotspot(hotspot: SceneHotspotModel) {
+    setActiveSceneDetailId(null);
+    setActiveNpcId(null);
+    setTaskBoardOpen(false);
+    setActiveShopId(null);
+    setActiveCraftWorkshopId(null);
+    setActiveReforgeWorkshopId(null);
+    setActiveSceneHotspotId(hotspot.id);
+  }
+
+  function handleSceneDetailAction(action: SceneAction, sceneId: string) {
+    if (action.kind === "shop") {
+      setActiveSceneDetailId(null);
+      setTaskBoardOpen(false);
+      setActiveCraftWorkshopId(null);
+      setActiveReforgeWorkshopId(null);
+      setActiveShopId(action.targetId ?? sceneId);
+      return;
+    }
+    if (action.kind === "taskBoard") {
+      setActiveSceneDetailId(null);
+      setActiveShopId(null);
+      setActiveCraftWorkshopId(null);
+      setActiveReforgeWorkshopId(null);
+      setTaskBoardOpen(true);
+      return;
+    }
+    if (action.kind !== "dialogue") {
+      setActiveSceneDetailId(null);
+    }
+    onChange((currentGame) => handleAction(currentGame, action));
   }
 
   function completeTravel(doneTravel: ActiveTravel) {
@@ -252,12 +456,39 @@ export default function ExplorePanel() {
       const sceneId = doneTravel.intent.sceneId;
       setView("location");
       setActiveSceneHotspotId(null);
+      setActiveNpcId(null);
+      setActiveCraftWorkshopId(null);
+      setActiveReforgeWorkshopId(null);
+      if (doneTravel.intent.openOnArrival) {
+        openSceneInteraction(sceneId);
+      } else {
+        setActiveSceneDetailId(null);
+      }
       onChange((currentGame) =>
         applyArrivalEvent(
           applySceneChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), sceneId),
           doneTravel,
         ),
       );
+      return;
+    }
+
+    if (doneTravel.intent.kind === "localNpc") {
+      const sceneId = doneTravel.intent.sceneId;
+      const npc = getNpc(doneTravel.intent.npcId);
+      setView("location");
+      setActiveSceneHotspotId(null);
+      setActiveSceneDetailId(null);
+      setTaskBoardOpen(false);
+      setActiveShopId(null);
+      setActiveCraftWorkshopId(null);
+      setActiveReforgeWorkshopId(null);
+      setActiveNpcId(doneTravel.intent.npcId);
+      onChange((currentGame) => {
+        const arrivedGame = applySceneChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), sceneId);
+        const sceneName = getScene(arrivedGame.world.regionId, arrivedGame.world.locationId, sceneId).name;
+        return applyArrivalEvent(appendLog(arrivedGame, `你来到${sceneName}，见到了${npc?.name ?? "目标人物"}。`), doneTravel);
+      });
       return;
     }
 
@@ -371,7 +602,7 @@ export default function ExplorePanel() {
                 {location.name}
               </h2>
               <span>
-                local map / {currentWorldPoi?.regionTag ?? region.name} / {getLocationTypeLabel(location.type)}
+                内部地图 / {currentWorldPoi?.regionTag ?? region.name} / {getLocationTypeLabel(location.type)}
               </span>
             </div>
           </div>
@@ -391,39 +622,32 @@ export default function ExplorePanel() {
               onMapTarget={(coord) => {
                 startTravel(localMapData.mapId, coord, { kind: "free" });
               }}
-              onSelectScene={travelToLocalScene}
+              onOpenNpcRoster={() => setNpcRosterOpen(true)}
+              onSelectNpc={travelToNpc}
+              onSelectScene={(sceneId) => travelToLocalScene(sceneId, true)}
             />
           ) : null}
 
-          <LocationIntelCard location={location} />
-
-          <article className="scene-card scene-card-no-image">
-            <p className="muted">{location.description}</p>
-            <div className="inner-map-grid">
-              {location.scenes.map((item) => (
-                <button className={item.id === scene.id ? "active" : ""} key={item.id} onClick={() => travelToLocalScene(item.id)}>
-                  <GameIcon name={getSceneIconName(item.type)} size={16} />
-                  <strong>{item.name}</strong>
-                  <small>{item.type}</small>
-                </button>
-              ))}
-            </div>
-            <div className="scene-detail">
-              <SceneView
-                name={scene.name}
-                type={scene.type}
-                description={scene.description}
-                imageSrc={null}
-                hotspots={scene.hotspots}
-                feedback={game.world.sceneMessage}
-                onHotspotSelect={openSceneHotspot}
-                actions={<SceneActionButtons actions={scene.actions} game={game} onChange={onChange} />}
-              />
-            </div>
-          </article>
-
-          {scene.actions.some((action) => action.kind === "shop") ? <Shop game={game} onChange={onChange} shopId={scene.id} /> : null}
-          {scene.actions.some((action) => action.kind === "taskBoard") ? <TaskBoard game={game} onChange={onChange} /> : null}
+          <NpcRosterDialog
+            game={game}
+            location={location}
+            motionEnabled={settings.motion}
+            onNpcSelect={travelToNpc}
+            onOpenChange={setNpcRosterOpen}
+            open={npcRosterOpen}
+          />
+          <NpcProfileDialog
+            game={game}
+            motionEnabled={settings.motion}
+            npc={activeNpc}
+            onAction={handleNpcAction}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActiveNpcId(null);
+              }
+            }}
+            open={Boolean(activeNpc)}
+          />
           <NpcDialogueSheet
             open={Boolean(activeSceneHotspot)}
             hotspot={activeSceneHotspot}
@@ -435,7 +659,29 @@ export default function ExplorePanel() {
               }
             }}
           />
-          <ShopCatalogSheet
+          <SceneDetailDialog
+            game={game}
+            motionEnabled={settings.motion}
+            onAction={handleSceneDetailAction}
+            onHotspotSelect={openSceneHotspot}
+            onNpcSelect={travelToNpc}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActiveSceneDetailId(null);
+              }
+            }}
+            open={Boolean(activeSceneDetail)}
+            scene={activeSceneDetail}
+            sceneNpcs={activeSceneNpcs}
+          />
+          <TaskBoardDialog
+            game={game}
+            motionEnabled={settings.motion}
+            onChange={onChange}
+            onOpenChange={setTaskBoardOpen}
+            open={taskBoardOpen}
+          />
+          <ShopCatalogDialog
             game={game}
             motionEnabled={settings.motion}
             onChange={onChange}
@@ -447,48 +693,34 @@ export default function ExplorePanel() {
             open={Boolean(activeShopId)}
             shopId={activeShopId}
           />
+          <EquipmentWorkshopDialog
+            game={game}
+            motionEnabled={settings.motion}
+            onChange={onChange}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActiveCraftWorkshopId(null);
+              }
+            }}
+            open={Boolean(activeCraftWorkshopId)}
+            workshopId={activeCraftWorkshopId}
+          />
+          <EquipmentReforgeDialog
+            game={game}
+            motionEnabled={settings.motion}
+            onChange={onChange}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActiveReforgeWorkshopId(null);
+              }
+            }}
+            open={Boolean(activeReforgeWorkshopId)}
+            workshopId={activeReforgeWorkshopId}
+          />
         </>
       )}
       <MapEventSheet game={game} motionEnabled={settings.motion} onChange={onChange} />
     </section>
-  );
-}
-
-function LocationIntelCard({ location }: { location: LocationNode }) {
-  const eventNames = (location.eventPoolIds ?? []).map((eventId) => getWorldEvent(eventId)?.title ?? eventId);
-  const enemyNames = (location.enemyPoolIds ?? []).map((enemyId) => getEnemyGroup(enemyId).title);
-  const dropNames = (location.dropPool ?? []).map((drop) => `${formatItemName(getItem(drop.itemId))} x${drop.amount}`);
-  const npcCount = location.npcIds?.length ?? 0;
-  const taskCount = location.taskIds?.length ?? 0;
-  const hasIntel = eventNames.length || enemyNames.length || dropNames.length || npcCount || taskCount || location.backgroundImageKey || location.resourceKey;
-
-  if (!hasIntel) {
-    return null;
-  }
-
-  return (
-    <section className="location-intel-card">
-      <div>
-        <span>地点档案</span>
-        <strong>{location.chapterId === "chapter_01_qingyun_black_wind" ? "第一章主循环" : "区域内容"}</strong>
-      </div>
-      <div className="location-intel-grid">
-        <IntelLine label="资源" value={location.resourceKey ?? location.backgroundImageKey ?? "未配置"} />
-        <IntelLine label="事件" value={eventNames.length ? eventNames.join(" / ") : "无随机事件"} />
-        <IntelLine label="敌人" value={enemyNames.length ? enemyNames.join(" / ") : "安全区域"} />
-        <IntelLine label="掉落" value={dropNames.length ? dropNames.join(" / ") : "无常规掉落"} />
-        <IntelLine label="入口" value={`${npcCount} NPC / ${taskCount} 任务`} />
-      </div>
-    </section>
-  );
-}
-
-function IntelLine({ label, value }: { label: string; value: string }) {
-  return (
-    <p>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </p>
   );
 }
 
@@ -539,6 +771,8 @@ function LocationSceneImageMap({
   imageSrc,
   location,
   onChange,
+  onOpenShop,
+  onOpenTaskBoard,
   onSceneHotspotSelect,
   onSelectScene,
 }: {
@@ -548,6 +782,8 @@ function LocationSceneImageMap({
   imageSrc: string;
   location: LocationNode;
   onChange: ExploreChange;
+  onOpenShop: (shopId: string) => void;
+  onOpenTaskBoard: () => void;
   onSceneHotspotSelect: (hotspot: SceneHotspotModel) => void;
   onSelectScene: (sceneId: string) => void;
 }) {
@@ -564,8 +800,6 @@ function LocationSceneImageMap({
   const scale = viewport.scale;
   const offset = clampLocationSceneOffset(viewport.offset, scale, viewportSize);
   const markerScale = 1 / scale;
-  const hasShop = currentScene.actions.some((action) => action.kind === "shop");
-  const hasTaskBoard = currentScene.actions.some((action) => action.kind === "taskBoard");
   const currentSceneImage: string | null = null;
 
   useEffect(() => {
@@ -743,9 +977,21 @@ function LocationSceneImageMap({
                 ))}
               </div>
             ) : null}
-            <SceneActionButtons actions={currentScene.actions} game={game} onChange={onChange} />
-            {hasShop ? <Shop game={game} onChange={onChange} shopId={currentScene.id} /> : null}
-            {hasTaskBoard ? <TaskBoard game={game} onChange={onChange} /> : null}
+            <SceneActionButtons
+              actions={currentScene.actions}
+              contextShopId={currentScene.id}
+              onAction={(action) => {
+                if (action.kind === "shop") {
+                  onOpenShop(action.targetId ?? currentScene.id);
+                  return;
+                }
+                if (action.kind === "taskBoard") {
+                  onOpenTaskBoard();
+                  return;
+                }
+                onChange(handleAction(game, action));
+              }}
+            />
           </section>
         ) : null}
       </div>
@@ -970,11 +1216,19 @@ function isLocationSceneBlockedCell(cell: { x: number; y: number }, blockedRects
   );
 }
 
-function SceneActionButtons({ actions, game, onChange }: { actions: SceneAction[]; game: GameState; onChange: ExploreChange }) {
+function SceneActionButtons({
+  actions,
+  contextShopId,
+  onAction,
+}: {
+  actions: SceneAction[];
+  contextShopId?: string;
+  onAction: (action: SceneAction, contextShopId?: string) => void;
+}) {
   return (
     <div className="action-grid">
       {actions.map((action) => (
-        <button className={`scene-action-card action-${action.kind}`} key={action.id} onClick={() => onChange(handleAction(game, action))}>
+        <button className={`scene-action-card action-${action.kind}`} key={action.id} onClick={() => onAction(action, contextShopId)}>
           <GameIcon name={getActionIconName(action.kind)} size={16} />
           <span>{action.label}</span>
         </button>
@@ -999,6 +1253,8 @@ function GridMapPanel({
   onSelectWorldPoi,
   onCloseWorldPoi,
   onEnterWorldPoi,
+  onOpenNpcRoster,
+  onSelectNpc,
   onSelectScene,
 }: {
   mode: "world" | "local";
@@ -1016,6 +1272,8 @@ function GridMapPanel({
   onSelectWorldPoi?: (poi: WorldPoiConfig) => void;
   onCloseWorldPoi?: () => void;
   onEnterWorldPoi?: (poi: WorldPoiConfig) => void;
+  onOpenNpcRoster?: () => void;
+  onSelectNpc?: (npcId: string) => void;
   onSelectScene?: (sceneId: string) => void;
 }) {
   const storedViewport = useMapUiStore((state) => state.viewportByMapId[mapData.mapId]);
@@ -1043,7 +1301,9 @@ function GridMapPanel({
   const zoomTier = getZoomTier(scale);
   const pathKeys = useMemo(() => new Set(visiblePath.map(gridCoordKey)), [visiblePath]);
   const detailedCells = debugOpen ? visibleCells : [];
-  const markers = mode === "world" ? getVisibleWorldPoiMarkers(scale) : getLocalSceneMarkers(location, currentScene);
+  const markers = mode === "world" ? getVisibleWorldPoiMarkers(scale) : getLocalMapMarkers(location, currentScene, game.world.npcs);
+  const isTownLocalMap = mode === "local" && (location?.type === "city" || location?.type === "town");
+  const townNpcCount = isTownLocalMap && location ? getNpcsForLocation(location.id, game.world.npcs).length : 0;
   const travelLabel = getTravelLabel(travel, mapData.mapId, location);
   const subtitle =
     travelLabel ??
@@ -1052,8 +1312,8 @@ function GridMapPanel({
         ? `已抵达：${selectedWorldPoi.name}`
         : `缩放 ${scale.toFixed(2)}x / ${getWorldZoomHint(scale)}`
       : currentScene
-        ? `${location?.name ?? mapData.name} / 当前：${currentScene.name}`
-        : `${location?.name ?? mapData.name} local map`);
+        ? `当前：${currentScene.name}`
+        : `${location?.name ?? mapData.name}内部地图`);
 
   useEffect(() => {
     const viewportElement = viewportRef.current;
@@ -1188,19 +1448,24 @@ function GridMapPanel({
   return (
     <div className={`grid-map-panel ${mode === "world" ? "world-grid-map-panel" : "local-grid-map-panel"}`}>
       <MapHeader
-        title={mode === "world" ? "问仙大世界" : "local map"}
+        title={mode === "world" ? "问仙大世界" : "内部地图"}
         subtitle={subtitle}
         debugOpen={debugOpen}
+        hideTitleBlock={isTownLocalMap}
         onZoomIn={() => zoom(GRID_MAP_BUTTON_ZOOM_FACTOR)}
         onZoomOut={() => zoom(1 / GRID_MAP_BUTTON_ZOOM_FACTOR)}
         onReset={resetMap}
         onToggleDebug={onToggleDebug}
         onRunSelfTest={onRunSelfTest}
+        onOpenNpcRoster={isTownLocalMap ? onOpenNpcRoster : undefined}
+        townNpcCount={townNpcCount}
       />
 
       <div
         ref={viewportRef}
         className={`world-map-viewport grid-map-viewport ${mode === "world" ? "world-grid-map-viewport" : "local-grid-map-viewport"} zoom-${zoomTier} ${
+          mode === "world" && selectedWorldPoi ? "has-info-drawer" : ""
+        } ${
           isMapInteracting ? "is-map-interacting" : ""
         }`}
         onWheel={(event) => {
@@ -1269,7 +1534,7 @@ function GridMapPanel({
               aria-label={`查看${marker.label}`}
               className={marker.className}
               key={marker.id}
-              style={getGridViewportAnchorStyle(mapData, marker.coord, viewportSize, scale, offset)}
+              style={getGridViewportAnchorStyle(mapData, marker.coord, viewportSize, scale, offset, marker.offsetX ?? 0, marker.offsetY ?? 0)}
               onPointerDown={stopMapGesture}
               onPointerMove={(event) => event.stopPropagation()}
               onPointerUp={(event) => event.stopPropagation()}
@@ -1277,6 +1542,10 @@ function GridMapPanel({
                 event.stopPropagation();
                 if (marker.kind === "worldPoi") {
                   onSelectWorldPoi?.(marker.poi);
+                  return;
+                }
+                if (marker.kind === "npc") {
+                  onSelectNpc?.(marker.npc.id);
                   return;
                 }
                 onSelectScene?.(marker.scene.id);
@@ -1304,6 +1573,9 @@ function MapHeader({
   title,
   subtitle,
   debugOpen,
+  hideTitleBlock = false,
+  townNpcCount,
+  onOpenNpcRoster,
   onZoomIn,
   onZoomOut,
   onReset,
@@ -1313,6 +1585,9 @@ function MapHeader({
   title: string;
   subtitle: string;
   debugOpen: boolean;
+  hideTitleBlock?: boolean;
+  townNpcCount?: number;
+  onOpenNpcRoster?: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onReset: () => void;
@@ -1320,7 +1595,8 @@ function MapHeader({
   onRunSelfTest: () => void;
 }) {
   return (
-    <div className="world-map-header">
+    <div className={`world-map-header ${hideTitleBlock ? "titleless" : ""}`}>
+      {!hideTitleBlock ? (
       <div>
         <h2>
           <GameIcon name="module-explore" size={18} />
@@ -1328,22 +1604,33 @@ function MapHeader({
         </h2>
         <span>{subtitle}</span>
       </div>
-      <div className="map-controls" onPointerDown={(event) => event.stopPropagation()}>
-        <button onClick={onZoomIn} aria-label="放大地图">
-          <GameIcon name="action-zoom-in" size={16} />
-        </button>
-        <button onClick={onZoomOut} aria-label="缩小地图">
-          <GameIcon name="action-zoom-out" size={16} />
-        </button>
-        <button onClick={onReset}>
-          <GameIcon name="action-reset" size={16} />
-          重置
-        </button>
-        <button className={debugOpen ? "active" : ""} onClick={onToggleDebug}>
-          网格
-        </button>
-        <button onClick={onRunSelfTest}>自检</button>
-      </div>
+      ) : null}
+      {onOpenNpcRoster ? (
+        <div className="map-controls town-map-controls" onPointerDown={(event) => event.stopPropagation()}>
+          <button className="town-npc-button" onClick={onOpenNpcRoster}>
+            <GameIcon name="team" size={16} />
+            城镇人物
+            {typeof townNpcCount === "number" ? <small>{townNpcCount}</small> : null}
+          </button>
+        </div>
+      ) : (
+        <div className="map-controls" onPointerDown={(event) => event.stopPropagation()}>
+          <button onClick={onZoomIn} aria-label="放大地图">
+            <GameIcon name="action-zoom-in" size={16} />
+          </button>
+          <button onClick={onZoomOut} aria-label="缩小地图">
+            <GameIcon name="action-zoom-out" size={16} />
+          </button>
+          <button onClick={onReset}>
+            <GameIcon name="action-reset" size={16} />
+            重置
+          </button>
+          <button className={debugOpen ? "active" : ""} onClick={onToggleDebug}>
+            网格
+          </button>
+          <button onClick={onRunSelfTest}>自检</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1358,6 +1645,8 @@ type GridMapMarker =
       iconName: GameIconName;
       className: string;
       detail?: string;
+      offsetX?: number;
+      offsetY?: number;
     }
   | {
       kind: "scene";
@@ -1368,6 +1657,20 @@ type GridMapMarker =
       iconName: GameIconName;
       className: string;
       detail?: string;
+      offsetX?: number;
+      offsetY?: number;
+    }
+  | {
+      kind: "npc";
+      id: string;
+      label: string;
+      coord: GridCoord;
+      npc: NpcConfig;
+      iconName: GameIconName;
+      className: string;
+      detail?: string;
+      offsetX?: number;
+      offsetY?: number;
     };
 
 function GridAtmosphereOverlay({ mode }: { mode: "world" | "local" }) {
@@ -1433,7 +1736,7 @@ function WorldRegionLabels({
     { id: "west", name: "西漠", coord: { x: 58, y: 112 }, detail: "沙海佛国" },
   ];
   return (
-    <div className={`world-region-labels ${scale < 1.5 ? "visible" : ""}`} aria-hidden="true">
+    <div className={`world-region-labels ${scale < 0.8 ? "visible" : ""}`} aria-hidden="true">
       {labels.map((label) => (
         <span className={`world-region-label ${label.id}`} key={label.id} style={getGridViewportAnchorStyle(mapData, label.coord, viewportSize, scale, offset)}>
           {label.name}
@@ -1483,7 +1786,7 @@ function WorldPoiDrawer({
         </button>
         <button className="primary-action compact" disabled={!poi.open || !poi.locationId} onClick={() => onEnter?.(poi)}>
           {poi.open && poi.locationId ? `进入${poi.name}` : "暂未开放"}
-          <small>{poi.open && poi.locationId ? "进入该地点 local map" : "保留为世界区域标签/后续内容"}</small>
+          <small>{poi.open && poi.locationId ? "进入地点内部地图" : "保留为世界区域标签/后续内容"}</small>
         </button>
       </div>
     </section>
@@ -1629,11 +1932,21 @@ function getVisibleWorldPoiMarkers(scale: number): GridMapMarker[] {
     }));
 }
 
-function getLocalSceneMarkers(location: LocationNode | undefined, currentScene: SceneNode | undefined): GridMapMarker[] {
+const localNpcMarkerOffsets = [
+  { x: 0, y: -34 },
+  { x: 34, y: -20 },
+  { x: -34, y: -20 },
+  { x: 34, y: 18 },
+  { x: -34, y: 18 },
+];
+
+function getLocalMapMarkers(location: LocationNode | undefined, currentScene: SceneNode | undefined, npcWorldState: GameState["world"]["npcs"]): GridMapMarker[] {
   if (!location) {
     return [];
   }
   const markers: GridMapMarker[] = [];
+  const npcSceneCounts = new Map<string, number>();
+
   location.scenes.forEach((scene) => {
     const coord = getLocalSceneGridCoord(location.id, scene.id);
     if (!coord) {
@@ -1646,11 +1959,53 @@ function getLocalSceneMarkers(location: LocationNode | undefined, currentScene: 
       coord,
       scene,
       iconName: getSceneIconName(scene.type),
-      detail: scene.type,
       className: `map-zone-label grid-map-marker local-scene-marker ${scene.id === currentScene?.id ? "active" : ""}`,
     });
   });
+
+  getNpcsForLocation(location.id, npcWorldState).forEach((npc) => {
+    if (npc.fixed) {
+      return;
+    }
+    const sceneId = getNpcSceneId(npc, location);
+    if (!sceneId) {
+      return;
+    }
+    const coord = getLocalSceneGridCoord(location.id, sceneId);
+    if (!coord) {
+      return;
+    }
+    const sceneCount = npcSceneCounts.get(sceneId) ?? 0;
+    const offset = localNpcMarkerOffsets[sceneCount % localNpcMarkerOffsets.length];
+    npcSceneCounts.set(sceneId, sceneCount + 1);
+    markers.push({
+      kind: "npc",
+      id: `npc:${npc.id}`,
+      label: npc.name,
+      coord,
+      npc,
+      iconName: "team",
+      offsetX: offset.x,
+      offsetY: offset.y,
+      className: `map-zone-label grid-map-marker local-npc-marker npc-${npc.group}`,
+    });
+  });
   return markers;
+}
+
+function getSceneNpcs(location: LocationNode, scene: SceneNode, npcWorldState: GameState["world"]["npcs"]): NpcConfig[] {
+  const workshop = getEquipmentWorkshopBySceneId(scene.id);
+  return getNpcsForLocation(location.id, npcWorldState)
+    .filter((npc) => getNpcSceneId(npc, location) === scene.id)
+    .sort((left, right) => {
+      if (left.id === workshop?.managerNpcId) {
+        return -1;
+      }
+      if (right.id === workshop?.managerNpcId) {
+        return 1;
+      }
+      return left.name.localeCompare(right.name, "zh-CN");
+    });
 }
 
 function getTravelLabel(travel: ActiveTravel | null, mapId: string, location?: LocationNode): string | null {
@@ -1664,7 +2019,7 @@ function getTravelLabel(travel: ActiveTravel | null, mapId: string, location?: L
   if (travel.intent.kind === "localScene") {
     const sceneId = travel.intent.sceneId;
     const sceneName = location?.scenes.find((scene) => scene.id === sceneId)?.name;
-    return sceneName ? `正在前往：${sceneName}` : "正在 local map 内移动";
+    return sceneName ? `正在前往：${sceneName}` : "正在内部地图移动";
   }
   return "正在沿灵路移动";
 }
@@ -1877,7 +2232,7 @@ function applyWorldPoiEnterChange(game: GameState, poi: WorldPoiConfig): GameSta
       locationId: nextLocation.id,
       sceneId: nextLocation.scenes[0].id,
       lastTownId: nextLocation.type === "city" || nextLocation.type === "town" ? nextLocation.id : game.world.lastTownId,
-      sceneMessage: `进入${poi.name} local map。`,
+      sceneMessage: `进入${poi.name}内部地图。`,
       navigation: {
         ...game.world.navigation,
         activeMapId: nextMapId ?? WORLD_GRID_MAP_ID,
@@ -1923,7 +2278,11 @@ function getTravelStartMessage(intent: TravelIntent, target: GridCoord, adjusted
     return `你向${getLocation(intent.regionId, intent.locationId).name}行去，${suffix}`;
   }
   if (intent.kind === "localScene") {
-    return `你在 local map 内移动，${suffix}`;
+    return `你在内部地图内移动，${suffix}`;
+  }
+  if (intent.kind === "localNpc") {
+    const npc = getNpc(intent.npcId);
+    return `你前往${npc?.name ?? "目标人物"}所在处，${suffix}`;
   }
   return `你展开身法沿格线前行，${suffix}`;
 }
@@ -1939,6 +2298,33 @@ function getLocationTypeLabel(type: "city" | "town" | "wild" | "secret"): string
     return "秘境";
   }
   return "野外";
+}
+
+function getSceneInteractionTarget(scene: SceneNode): { kind: "shop"; shopId: string } | { kind: "taskBoard" } | { kind: "detail" } {
+  const actionable = scene.actions;
+  if (actionable.length > 0 && actionable.every((action) => action.kind === "shop")) {
+    return { kind: "shop", shopId: actionable[0].targetId ?? scene.id };
+  }
+  if (actionable.length > 0 && actionable.every((action) => action.kind === "taskBoard")) {
+    return { kind: "taskBoard" };
+  }
+  return { kind: "detail" };
+}
+
+function getNpcSceneId(npc: NpcConfig, location: LocationNode): string | null {
+  if (npc.homeSceneId && location.scenes.some((scene) => scene.id === npc.homeSceneId)) {
+    return npc.homeSceneId;
+  }
+  if (npc.shopId && location.scenes.some((scene) => scene.id === npc.shopId)) {
+    return npc.shopId;
+  }
+  if (npc.group === "task") {
+    return location.scenes.find((scene) => scene.id === "notice_board")?.id ?? location.scenes.find((scene) => scene.type.includes("任务"))?.id ?? location.scenes[0]?.id ?? null;
+  }
+  if (npc.group === "roamer") {
+    return location.scenes.find((scene) => scene.id === "qingyun_inn")?.id ?? location.scenes.find((scene) => scene.type.includes("NPC"))?.id ?? location.scenes[0]?.id ?? null;
+  }
+  return location.scenes.find((scene) => scene.type.includes("NPC"))?.id ?? location.scenes[0]?.id ?? null;
 }
 
 function getSceneIconName(type: string): GameIconName {
@@ -2082,28 +2468,746 @@ function advanceSceneActionTime(game: GameState, kind: SceneAction["kind"]): Gam
   return game;
 }
 
-function Shop({ game, onChange, shopId }: { game: GameState; onChange: ExploreChange; shopId?: string }) {
-  const shop = getShopConfig(shopId, game.world.regionId);
-  const refresh = getShopRefreshInfo(shop, game.world.calendar);
+function SceneDetailDialog({
+  game,
+  motionEnabled,
+  onAction,
+  onHotspotSelect,
+  onNpcSelect,
+  onOpenChange,
+  open,
+  scene,
+  sceneNpcs,
+}: {
+  game: GameState;
+  motionEnabled: boolean;
+  onAction: (action: SceneAction, sceneId: string) => void;
+  onHotspotSelect: (hotspot: SceneHotspotModel) => void;
+  onNpcSelect: (npcId: string) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  scene: SceneNode | null;
+  sceneNpcs: NpcConfig[];
+}) {
+  if (!scene) {
+    return null;
+  }
+  const workshop = getEquipmentWorkshopBySceneId(scene.id);
+  const facilityActions = sceneNpcs.length ? scene.actions.filter((action) => action.kind !== "shop" && action.kind !== "taskBoard") : scene.actions;
+
   return (
-    <section className="shop-list">
-      <div className="section-heading">
-        <h2>
-          <GameIcon name="location-town" size={18} />
-          {shop.name}
-        </h2>
-        <span>灵石 {game.player.spiritStones}</span>
+    <GameDialog
+      className="scene-detail-dialog"
+      motionEnabled={motionEnabled}
+      onOpenChange={onOpenChange}
+      open={open}
+      subtitle={scene.type}
+      title={`在${scene.name}`}
+    >
+      <div className="scene-detail-dialog-body">
+        <p>{scene.description}</p>
+        {game.world.sceneMessage ? <p className="scene-message">{game.world.sceneMessage}</p> : null}
+        {sceneNpcs.length ? (
+          <section className="scene-npc-section">
+            <div className="scene-dialog-section-title">
+              <strong>此地修士</strong>
+              <small>{sceneNpcs.length}</small>
+            </div>
+            <div className="scene-npc-list">
+              {sceneNpcs.map((npc) => (
+                <button className="scene-npc-card" key={npc.id} onClick={() => onNpcSelect(npc.id)} type="button">
+                  <span className="npc-roster-avatar">{npc.name.slice(0, 1)}</span>
+                  <span>
+                    <strong>{npc.name}</strong>
+                    <small>{npc.title}</small>
+                  </span>
+                  {workshop?.managerNpcId === npc.id ? <em>管事</em> : null}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {scene.hotspots?.length ? (
+          <div className="scene-hotspot-list">
+            {scene.hotspots.map((hotspot) => (
+              <button className={`scene-hotspot-list-button hotspot-${hotspot.type ?? "action"}`} key={hotspot.id} onClick={() => onHotspotSelect(hotspot)} type="button">
+                <span>{hotspot.label}</span>
+                {hotspot.title ?? hotspot.text ? <small>{hotspot.title ?? hotspot.text}</small> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {facilityActions.length ? (
+          <section className="scene-facility-section">
+            <div className="scene-dialog-section-title">
+              <strong>可用设施</strong>
+            </div>
+            <SceneActionButtons actions={facilityActions} contextShopId={scene.id} onAction={(action, contextShopId) => onAction(action, contextShopId ?? scene.id)} />
+          </section>
+        ) : !sceneNpcs.length && !scene.hotspots?.length ? (
+          <p className="empty-hint compact">此处暂时没有可执行的行动。</p>
+        ) : null}
       </div>
-      <p className="shop-refresh-note">
-        {refresh.label}
-        {refresh.remainingDays !== null ? ` · ${refresh.remainingDays}天后补货` : ""}
-      </p>
-      <ShopItemList game={game} onChange={onChange} shop={shop} />
-    </section>
+    </GameDialog>
   );
 }
 
-function ShopCatalogSheet({
+function NpcRosterDialog({
+  game,
+  location,
+  motionEnabled,
+  onNpcSelect,
+  onOpenChange,
+  open,
+}: {
+  game: GameState;
+  location: LocationNode;
+  motionEnabled: boolean;
+  onNpcSelect: (npcId: string) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const groups = getNpcRosterGroups(location.id, game.world.npcs);
+  const total = groups.reduce((count, group) => count + group.npcs.length, 0);
+  return (
+    <GameDialog
+      className="npc-roster-dialog"
+      motionEnabled={motionEnabled}
+      onOpenChange={onOpenChange}
+      open={open}
+      subtitle={`${location.name} · ${total} 人`}
+      title="城镇人物"
+    >
+      <div className="npc-roster-groups">
+        {groups.map((group) => (
+          <section className="npc-roster-group" key={group.id}>
+            <div className="npc-roster-group-heading">
+              <h3>{group.label}</h3>
+              <span>{group.npcs.length}</span>
+            </div>
+            {group.npcs.length ? (
+              <div className="npc-roster-list">
+                {group.npcs.map((npc) => (
+                  <button className="npc-roster-card" key={npc.id} onClick={() => onNpcSelect(npc.id)} type="button">
+                    <span className="npc-roster-avatar">{npc.name.slice(0, 1)}</span>
+                    <span className="npc-roster-main">
+                      <strong>{npc.name}</strong>
+                      <small>{npc.title}</small>
+                    </span>
+                    <span className="npc-roster-meta">
+                      <small>{formatNpcRealm(npc, game.world.npcs)}</small>
+                      <small>{npc.fixed ? "固定" : formatNpcLocation(npc, game.world.npcs)}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-hint compact">此类人物暂未出现在这里。</p>
+            )}
+          </section>
+        ))}
+      </div>
+    </GameDialog>
+  );
+}
+
+function NpcProfileDialog({
+  game,
+  motionEnabled,
+  npc,
+  onAction,
+  onOpenChange,
+  open,
+}: {
+  game: GameState;
+  motionEnabled: boolean;
+  npc: NpcConfig | null;
+  onAction: (npc: NpcConfig, action: NpcActionConfig) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  if (!npc) {
+    return null;
+  }
+  const relations = getNpcRelations(npc.id);
+  return (
+    <GameDialog
+      className="npc-profile-dialog npc-dialogue-glass"
+      motionEnabled={motionEnabled}
+      onOpenChange={onOpenChange}
+      open={open}
+      subtitle={`${npc.title} · ${formatNpcRealm(npc, game.world.npcs)}`}
+      title={npc.name}
+    >
+      <div className="npc-profile">
+        <div className="npc-profile-hero">
+          <span className="npc-profile-avatar">{npc.name.slice(0, 1)}</span>
+          <div>
+            <p>{npc.dialogue}</p>
+            <div className="npc-profile-tags">
+              <span>{npc.force ?? "散修"}</span>
+              <span>{formatNpcLocation(npc, game.world.npcs)}</span>
+              <span>{npc.fixed ? "常驻" : "游历"}</span>
+            </div>
+          </div>
+        </div>
+        {relations.length ? (
+          <div className="npc-relation-list">
+            {relations.slice(0, 4).map((relation) => {
+              const otherNpcId = relation.fromNpcId === npc.id ? relation.toNpcId : relation.fromNpcId;
+              const otherNpc = getNpc(otherNpcId);
+              return (
+                <span key={relation.id}>
+                  {relation.label}：{otherNpc?.name ?? "未知"}
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
+        <div className="npc-dialogue-actions" aria-label={`${npc.name}互动`}>
+          {npc.actions.map((action) => (
+            <button disabled={action.disabled} key={action.id} onClick={() => onAction(npc, action)} type="button">
+              <span>{action.label}</span>
+              {action.description ? <small>{action.description}</small> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+    </GameDialog>
+  );
+}
+
+function EquipmentWorkshopDialog({
+  game,
+  motionEnabled,
+  onChange,
+  onOpenChange,
+  open,
+  workshopId,
+}: {
+  game: GameState;
+  motionEnabled: boolean;
+  onChange: ExploreChange;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  workshopId: string | null;
+}) {
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
+  const [materialsLoaded, setMaterialsLoaded] = useState(false);
+  const [forging, setForging] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const workshop = getEquipmentWorkshop(workshopId);
+  const selectedRecipe = workshop?.recipes.find((recipe) => recipe.id === selectedRecipeId) ?? workshop?.recipes[0] ?? null;
+  const selectedItem = selectedRecipe ? getItem(selectedRecipe.itemId) : null;
+  const blueprintItem = selectedRecipe ? getItem(selectedRecipe.blueprintItemId) : null;
+  const blueprintCount = selectedRecipe ? (game.inventory.items[selectedRecipe.blueprintItemId] ?? 0) : 0;
+  const learned = selectedRecipe ? isEquipmentRecipeLearned(game, selectedRecipe.id) : false;
+  const canLoadMaterials = Boolean(selectedRecipe && learned && canAffordCost(game, selectedRecipe.cost));
+  const canForge = Boolean(selectedRecipe && learned && materialsLoaded && canAffordCost(game, selectedRecipe.cost) && !forging);
+
+  useEffect(() => {
+    if (!open || !workshop) {
+      setSelectedRecipeId(null);
+      setMaterialsLoaded(false);
+      setForging(false);
+      setFeedback(null);
+      return;
+    }
+    setSelectedRecipeId(workshop.recipes[0]?.id ?? null);
+    setMaterialsLoaded(false);
+    setForging(false);
+    setFeedback(null);
+  }, [open, workshopId]);
+
+  if (!workshop) {
+    return null;
+  }
+  const activeWorkshop = workshop;
+
+  function selectRecipe(recipeId: string) {
+    setSelectedRecipeId(recipeId);
+    setMaterialsLoaded(false);
+    setFeedback(null);
+  }
+
+  function learnRecipe() {
+    if (!selectedRecipe) {
+      return;
+    }
+    const currentWorkshopId = activeWorkshop.id;
+    onChange((currentGame) => learnEquipmentCraftRecipe(currentGame, currentWorkshopId, selectedRecipe.id));
+    setMaterialsLoaded(false);
+    setFeedback(`你将${formatItemName(selectedRecipe.blueprintItemId)}收入火候册。`);
+  }
+
+  function loadMaterials() {
+    if (!canLoadMaterials) {
+      return;
+    }
+    setMaterialsLoaded(true);
+    setFeedback("所需材料已摆上炼器台。");
+  }
+
+  function confirmForge() {
+    if (!selectedRecipe || !canForge) {
+      return;
+    }
+    setForging(true);
+    setFeedback("炉火正旺，器胚正在成形。");
+    const currentWorkshopId = activeWorkshop.id;
+    const recipeId = selectedRecipe.id;
+    const resultName = formatWorkshopItemName(selectedRecipe.itemId);
+    window.setTimeout(
+      () => {
+        onChange((currentGame) => craftWorkshopEquipment(currentGame, currentWorkshopId, recipeId));
+        setForging(false);
+        setMaterialsLoaded(false);
+        setFeedback(`炉火一收，${resultName}已入背包。`);
+      },
+      motionEnabled ? 800 : 0,
+    );
+  }
+
+  return (
+    <GameDialog
+      className="equipment-workshop-dialog"
+      motionEnabled={motionEnabled}
+      onOpenChange={onOpenChange}
+      open={open}
+      subtitle="赵铁匠 · 打造装备"
+      title={activeWorkshop.name}
+    >
+      <div className={`equipment-workshop workbench ${forging ? "is-forging" : ""}`}>
+        <p>先研读图纸，再一键放入所需材料，最后开炉打造。图纸学习后永久解锁。</p>
+        <div className="workbench-recipe-tabs" aria-label="炼器图纸">
+          {activeWorkshop.recipes.map((recipe) => {
+            const item = getItem(recipe.itemId);
+            const recipeLearned = isEquipmentRecipeLearned(game, recipe.id);
+            return (
+              <button className={`workbench-recipe-tab grade-card grade-${item.grade}${recipe.id === selectedRecipe?.id ? " active" : ""}`} key={recipe.id} onClick={() => selectRecipe(recipe.id)} type="button">
+                <GameIcon name={getShopItemIconName(item)} size={17} />
+                <span>
+                  <strong className={getGradeNameClass(item)}>{formatWorkshopItemName(recipe.itemId)}</strong>
+                  <small>{recipeLearned ? "已学会" : "需研读图纸"}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {selectedRecipe && selectedItem && blueprintItem ? (
+          <div className="workbench-layout">
+            <section className={`workbench-stage-card blueprint-stage ${learned ? "ready" : blueprintCount > 0 ? "available" : "missing"}`}>
+              <div className="workshop-card-heading">
+                <GameIcon name="system-library" size={18} />
+                <div>
+                  <strong>{blueprintItem.name}</strong>
+                  <small>{learned ? "已学会" : blueprintCount > 0 ? `可研读 · 持有 x${blueprintCount}` : "缺图纸"}</small>
+                </div>
+              </div>
+              <p>{selectedRecipe.description}</p>
+              {!learned ? (
+                <button disabled={blueprintCount <= 0 || forging} onClick={learnRecipe} type="button">
+                  {blueprintCount > 0 ? "研读图纸" : "缺少图纸"}
+                </button>
+              ) : (
+                <span className="workbench-status-tag">图纸已收入火候册</span>
+              )}
+            </section>
+            <section className={`workbench-stage-card material-stage ${materialsLoaded ? "ready" : ""}`}>
+              <div className="workshop-card-heading">
+                <GameIcon name="item-material" size={18} />
+                <div>
+                  <strong>所需材料</strong>
+                  <small>{formatWorkshopCost(selectedRecipe.cost)}</small>
+                </div>
+              </div>
+              <WorkshopCostSlots cost={selectedRecipe.cost} game={game} loaded={materialsLoaded} />
+              <button disabled={!canLoadMaterials || materialsLoaded || forging} onClick={loadMaterials} type="button">
+                {materialsLoaded ? "材料已放入" : canLoadMaterials ? "一键放入材料" : learned ? "材料不足" : "先研读图纸"}
+              </button>
+            </section>
+            <section className={`workbench-stage-card result-stage grade-card grade-${selectedItem.grade}${forging ? " forging" : ""}`}>
+              <div className="workshop-card-heading">
+                <GameIcon name={getShopItemIconName(selectedItem)} size={18} />
+                <div>
+                  <strong className={getGradeNameClass(selectedItem)}>{formatWorkshopItemName(selectedRecipe.itemId)}</strong>
+                  <small>
+                    {itemTierLabels[selectedItem.tier]} · {selectedItem.equipment ? getWorkshopSlotLabel(selectedItem.equipment.slot) : "器物"}
+                  </small>
+                </div>
+                <GradeBadge compact grade={selectedItem.grade} />
+              </div>
+              <p>打造成功后生成一件独立装备实例，不占用商店库存。</p>
+              <button disabled={!canForge} onClick={confirmForge} type="button">
+                {forging ? "打造中" : canForge ? "开始打造" : materialsLoaded ? "无法打造" : "等待材料"}
+              </button>
+            </section>
+          </div>
+        ) : null}
+        {feedback ? <p className="workbench-feedback">{feedback}</p> : null}
+      </div>
+    </GameDialog>
+  );
+}
+
+type ReforgeSourceKey = "bag" | "equipped";
+
+function EquipmentReforgeDialog({
+  game,
+  motionEnabled,
+  onChange,
+  onOpenChange,
+  open,
+  workshopId,
+}: {
+  game: GameState;
+  motionEnabled: boolean;
+  onChange: ExploreChange;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  workshopId: string | null;
+}) {
+  const [source, setSource] = useState<ReforgeSourceKey>("bag");
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [lockedAffixIds, setLockedAffixIds] = useState<string[]>([]);
+  const [materialsLoaded, setMaterialsLoaded] = useState(false);
+  const [reforging, setReforging] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const workshop = getEquipmentWorkshop(workshopId);
+  const equippedInstanceIds = useMemo(() => new Set(Object.values(game.inventory.equipment).filter(Boolean) as string[]), [game.inventory.equipment]);
+  const bagEquipmentInstances = game.inventory.equipmentItems.filter((instance) => !equippedInstanceIds.has(instance.id));
+  const equippedEntries = equipmentSlots
+    .map((slot) => ({ slotId: slot.id, slotLabel: slot.label, instance: getEquippedEquipmentInstance(game, slot.id) }))
+    .filter((entry): entry is { slotId: EquipmentSlotId; slotLabel: string; instance: EquipmentInstance } => Boolean(entry.instance));
+  const equipmentInstances = source === "bag" ? bagEquipmentInstances : equippedEntries.map((entry) => entry.instance);
+  const selectedInstance = selectedInstanceId ? equipmentInstances.find((instance) => instance.id === selectedInstanceId) ?? null : null;
+  const selectedItem = selectedInstance ? getItem(selectedInstance.itemId) : null;
+  const lockLimit = selectedInstance ? getEffectiveReforgeLockLimit(selectedInstance) : 0;
+  const cost = selectedInstance ? getReforgeCost(selectedInstance, lockedAffixIds.length) : null;
+  const canPay = cost ? canAffordCost(game, cost) : false;
+  const canLoadMaterials = Boolean(selectedInstance && selectedInstance.affixes.length > lockedAffixIds.length && canPay);
+  const canReforge = Boolean(selectedInstance && materialsLoaded && selectedInstance.affixes.length > lockedAffixIds.length && canPay && !reforging);
+
+  useEffect(() => {
+    if (!open) {
+      setSource("bag");
+      setSelectedInstanceId(null);
+      setLockedAffixIds([]);
+      setMaterialsLoaded(false);
+      setReforging(false);
+      setFeedback(null);
+    }
+  }, [open, workshopId]);
+
+  useEffect(() => {
+    if (selectedInstanceId && !game.inventory.equipmentItems.some((instance) => instance.id === selectedInstanceId)) {
+      setSelectedInstanceId(null);
+      setLockedAffixIds([]);
+      setMaterialsLoaded(false);
+      setFeedback(null);
+    }
+  }, [game.inventory.equipmentItems, selectedInstanceId]);
+
+  function changeSource(nextSource: ReforgeSourceKey) {
+    if (nextSource === source) {
+      return;
+    }
+    setSource(nextSource);
+    setSelectedInstanceId(null);
+    setLockedAffixIds([]);
+    setMaterialsLoaded(false);
+    setFeedback(null);
+  }
+
+  function selectInstance(instanceId: string) {
+    setSelectedInstanceId(instanceId);
+    setLockedAffixIds([]);
+    setMaterialsLoaded(false);
+    setFeedback(null);
+  }
+
+  function toggleLockedAffix(affixId: string) {
+    setLockedAffixIds((current) => {
+      if (current.includes(affixId)) {
+        return current.filter((item) => item !== affixId);
+      }
+      if (current.length >= lockLimit) {
+        return current;
+      }
+      return [...current, affixId];
+    });
+    setMaterialsLoaded(false);
+    setFeedback(null);
+  }
+
+  function loadReforgeMaterials() {
+    if (!canLoadMaterials) {
+      return;
+    }
+    setMaterialsLoaded(true);
+    setFeedback("洗炼材料已置入炉阵。");
+  }
+
+  function confirmReforge() {
+    if (!selectedInstance || !canReforge) {
+      return;
+    }
+    const instanceId = selectedInstance.id;
+    const resultName = selectedInstance.displayName;
+    const lockedIds = lockedAffixIds;
+    setReforging(true);
+    setFeedback("灵纹入炉，词条正在重排。");
+    window.setTimeout(
+      () => {
+        onChange((currentGame) => reforgeWorkshopEquipment(currentGame, instanceId, lockedIds));
+        setLockedAffixIds([]);
+        setMaterialsLoaded(false);
+        setReforging(false);
+        setFeedback(`${resultName} 的词条已重新洗炼。`);
+      },
+      motionEnabled ? 900 : 0,
+    );
+  }
+
+  if (!workshop) {
+    return null;
+  }
+
+  return (
+    <>
+      <GameDialog
+        className="equipment-reforge-dialog"
+        motionEnabled={motionEnabled}
+        onOpenChange={onOpenChange}
+        open={open}
+        subtitle="赵铁匠 · 洗炼词条"
+        title={workshop.name}
+      >
+        <div className="equipment-reforge">
+          <p>先选择要洗炼的装备来源，再进入洗炼台锁定词条和放入材料。</p>
+          <div className="reforge-source-tabs" aria-label="装备来源">
+            <button className={source === "bag" ? "active" : ""} onClick={() => changeSource("bag")} type="button">
+              背包装备 <small>{bagEquipmentInstances.length}</small>
+            </button>
+            <button className={source === "equipped" ? "active" : ""} onClick={() => changeSource("equipped")} type="button">
+              已穿装备 <small>{equippedEntries.length}</small>
+            </button>
+          </div>
+          <div className="reforge-equipment-list">
+            {source === "bag"
+              ? bagEquipmentInstances.map((instance) => <ReforgeEquipmentButton instance={instance} key={instance.id} onSelect={selectInstance} selected={instance.id === selectedInstanceId} />)
+              : equippedEntries.map((entry) => (
+                  <ReforgeEquipmentButton
+                    instance={entry.instance}
+                    key={entry.instance.id}
+                    onSelect={selectInstance}
+                    selected={entry.instance.id === selectedInstanceId}
+                    sourceLabel={entry.slotLabel}
+                  />
+                ))}
+            {equipmentInstances.length === 0 ? <p className="empty-hint compact">{source === "bag" ? "背包中暂无可洗炼装备。" : "当前没有已穿装备。"}</p> : null}
+          </div>
+        </div>
+      </GameDialog>
+      <ReforgeWorkbenchDialog
+        canLoadMaterials={canLoadMaterials}
+        canPay={canPay}
+        canReforge={canReforge}
+        cost={cost}
+        feedback={feedback}
+        game={game}
+        lockedAffixIds={lockedAffixIds}
+        lockLimit={lockLimit}
+        materialsLoaded={materialsLoaded}
+        motionEnabled={motionEnabled}
+        onConfirm={confirmReforge}
+        onLoadMaterials={loadReforgeMaterials}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setSelectedInstanceId(null);
+            setLockedAffixIds([]);
+            setMaterialsLoaded(false);
+            setFeedback(null);
+          }
+        }}
+        onToggleAffix={toggleLockedAffix}
+        open={open && Boolean(selectedInstance)}
+        reforging={reforging}
+        selectedInstance={selectedInstance}
+        selectedItem={selectedItem}
+      />
+    </>
+  );
+}
+
+function WorkshopCostSlots({ cost, game, loaded }: { cost: Cost; game: GameState; loaded: boolean }) {
+  const slots = getWorkshopCostSlots(cost, game);
+  if (!slots.length) {
+    return <p className="empty-hint compact">无需额外材料。</p>;
+  }
+  return (
+    <div className="workbench-cost-grid">
+      {slots.map((slot) => {
+        const missing = slot.owned < slot.required;
+        return (
+          <div className={`workbench-cost-slot ${loaded ? "loaded" : missing ? "missing" : "ready"}`} key={slot.id}>
+            <GameIcon name={slot.iconName} size={16} />
+            <strong>{slot.name}</strong>
+            <small>
+              {slot.kind === "stones" ? `${slot.required} 灵石` : `库存 ${slot.owned}/${slot.required}`}
+            </small>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReforgeEquipmentButton({
+  instance,
+  onSelect,
+  selected,
+  sourceLabel,
+}: {
+  instance: EquipmentInstance;
+  onSelect: (instanceId: string) => void;
+  selected: boolean;
+  sourceLabel?: string;
+}) {
+  const item = getItem(instance.itemId);
+  return (
+    <button className={`reforge-equipment-card grade-card grade-${instance.quality}${selected ? " active" : ""}`} onClick={() => onSelect(instance.id)} type="button">
+      <GameIcon name={getShopItemIconName(item)} size={18} />
+      <span>
+        <strong className={getGradeNameClass(item)}>{instance.displayName}</strong>
+        <small>
+          {sourceLabel ? `${sourceLabel} · ` : ""}
+          {itemTierLabels[instance.realmTier]} · {itemGradeLabels[instance.quality]} · 词条 {instance.affixes.length}
+        </small>
+      </span>
+    </button>
+  );
+}
+
+function ReforgeWorkbenchDialog({
+  canLoadMaterials,
+  canPay,
+  canReforge,
+  cost,
+  feedback,
+  game,
+  lockedAffixIds,
+  lockLimit,
+  materialsLoaded,
+  motionEnabled,
+  onConfirm,
+  onLoadMaterials,
+  onOpenChange,
+  onToggleAffix,
+  open,
+  reforging,
+  selectedInstance,
+  selectedItem,
+}: {
+  canLoadMaterials: boolean;
+  canPay: boolean;
+  canReforge: boolean;
+  cost: Cost | null;
+  feedback: string | null;
+  game: GameState;
+  lockedAffixIds: string[];
+  lockLimit: number;
+  materialsLoaded: boolean;
+  motionEnabled: boolean;
+  onConfirm: () => void;
+  onLoadMaterials: () => void;
+  onOpenChange: (open: boolean) => void;
+  onToggleAffix: (affixId: string) => void;
+  open: boolean;
+  reforging: boolean;
+  selectedInstance: EquipmentInstance | null;
+  selectedItem: ItemConfig | null;
+}) {
+  if (!selectedInstance || !selectedItem) {
+    return null;
+  }
+
+  const hasRerollTarget = selectedInstance.affixes.length > lockedAffixIds.length;
+  const materialLabel = materialsLoaded ? "材料已放入" : canLoadMaterials ? "一键放入材料" : canPay ? "需保留词条" : "材料不足";
+  const reforgeLabel = reforging ? "洗炼中" : canReforge ? "开始洗炼" : materialsLoaded ? "无法洗炼" : "等待材料";
+
+  return (
+    <GameDialog
+      className="reforge-workbench-dialog"
+      motionEnabled={motionEnabled}
+      onOpenChange={onOpenChange}
+      open={open}
+      overlayClassName="reforge-workbench-overlay"
+      subtitle={`${itemGradeLabels[selectedInstance.quality]} · 最多锁定 ${lockLimit} 条`}
+      title={`洗炼：${selectedInstance.displayName}`}
+    >
+      <div className={`reforge-workbench ${reforging ? "is-reforging" : ""}`}>
+        <section className={`reforge-workbench-hero grade-card grade-${selectedInstance.quality}`}>
+          <GameIcon name={getShopItemIconName(selectedItem)} size={22} />
+          <div>
+            <strong className={getGradeNameClass(selectedItem)}>{selectedInstance.displayName}</strong>
+            <small>
+              {itemTierLabels[selectedInstance.realmTier]} · {getWorkshopSlotLabel(selectedInstance.slot)} · 战力 +{selectedInstance.powerBonus}
+            </small>
+          </div>
+          <GradeBadge compact grade={selectedInstance.quality} />
+        </section>
+        <section className="reforge-workbench-section">
+          <div className="scene-dialog-section-title">
+            <strong>锁定词条</strong>
+            <small>
+              {lockedAffixIds.length}/{lockLimit}
+            </small>
+          </div>
+          {selectedInstance.affixes.length ? (
+            <div className="reforge-affix-list">
+              {selectedInstance.affixes.map((affix) => {
+                const locked = lockedAffixIds.includes(affix.id);
+                const disabled = reforging || (!locked && (lockedAffixIds.length >= lockLimit || selectedInstance.affixes.length - lockedAffixIds.length <= 1));
+                return (
+                  <AffixRow
+                    actionLabel={locked ? "已锁定" : disabled ? "不可锁" : "点击锁定"}
+                    affix={affix}
+                    disabled={disabled}
+                    key={affix.id}
+                    locked={locked}
+                    onClick={() => onToggleAffix(affix.id)}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <p className="empty-hint compact">这件装备暂无可洗炼词条。</p>
+          )}
+        </section>
+        <section className={`workbench-stage-card material-stage ${materialsLoaded ? "ready" : ""}`}>
+          <div className="workshop-card-heading">
+            <GameIcon name="item-material" size={18} />
+            <div>
+              <strong>洗炼材料</strong>
+              <small>{cost ? formatWorkshopCost(cost) : "先选择装备"}</small>
+            </div>
+          </div>
+          {cost ? <WorkshopCostSlots cost={cost} game={game} loaded={materialsLoaded} /> : null}
+          <button disabled={!canLoadMaterials || materialsLoaded || reforging} onClick={onLoadMaterials} type="button">
+            {materialLabel}
+          </button>
+        </section>
+        <button className="reforge-confirm-button" disabled={!canReforge || !hasRerollTarget} onClick={onConfirm} type="button">
+          {reforgeLabel}
+        </button>
+        {feedback ? <p className="workbench-feedback">{feedback}</p> : null}
+      </div>
+    </GameDialog>
+  );
+}
+
+function ShopCatalogDialog({
   game,
   motionEnabled,
   onChange,
@@ -2118,148 +3222,427 @@ function ShopCatalogSheet({
   open: boolean;
   shopId: string | null;
 }) {
+  const [page, setPage] = useState(0);
+  const [category, setCategory] = useState<ShopCategoryKey>("all");
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const pageSize = useShopPageSize(open);
   const shop = getShopConfig(shopId, game.world.regionId);
   const refresh = getShopRefreshInfo(shop, game.world.calendar);
-
-  return (
-    <BottomSheet
-      open={open}
-      onOpenChange={onOpenChange}
-      title={shop.name}
-      subtitle={shop.ownerName ? `${shop.ownerName} · ${refresh.label}` : refresh.label}
-      motionEnabled={motionEnabled}
-      className="shop-catalog-sheet"
-    >
-      <div className="shop-catalog">
-        <section className="shop-catalog-summary">
-          <div>
-            <h3>{shop.description}</h3>
-            <p>
-              当前灵石：<strong>{game.player.spiritStones}</strong>
-            </p>
-          </div>
-          <span>{refresh.remainingDays !== null ? `${refresh.remainingDays}天后补货` : "固定库存"}</span>
-        </section>
-        <ShopItemList game={game} onChange={onChange} shop={shop} large />
-      </div>
-    </BottomSheet>
-  );
-}
-
-function ShopItemList({ game, large = false, onChange, shop }: { game: GameState; large?: boolean; onChange: ExploreChange; shop: ShopConfig }) {
   const displayItems = getShopDisplayItems(game, shop);
+  const categoryCounts = useMemo(() => getShopCategoryCounts(displayItems), [displayItems]);
+  const visibleTabs = useMemo(() => shopCategoryTabs.filter((tab) => tab.key === "all" || categoryCounts[tab.key] > 0), [categoryCounts]);
+  const filteredItems = useMemo(
+    () => (category === "all" ? displayItems : displayItems.filter((entry) => getShopItemCategory(entry) === category)),
+    [category, displayItems],
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageItems = filteredItems.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  const selectedEntry = selectedItemId ? filteredItems.find((entry) => entry.shopItem.itemId === selectedItemId) ?? null : null;
+
+  useEffect(() => {
+    setCategory("all");
+    setPage(0);
+    setSelectedItemId(null);
+  }, [shop.id, open]);
+
+  useEffect(() => {
+    if (page > pageCount - 1) {
+      setPage(pageCount - 1);
+    }
+  }, [page, pageCount]);
+
+  function changeCategory(nextCategory: ShopCategoryKey) {
+    if (nextCategory === category) {
+      return;
+    }
+    setCategory(nextCategory);
+    setPage(0);
+    setSelectedItemId(null);
+  }
 
   function buy(itemId: string) {
     onChange((currentGame) => buyShopItem(currentGame, shop.id, itemId));
   }
 
   return (
-    <div className={large ? "shop-catalog-grid" : "shop-inline-list"}>
-      {displayItems.map(({ item, remaining, shopItem, soldOut }) => {
-        const stockText = remaining === null ? "不限" : `${remaining}/${shopItem.stock}`;
-        const canBuy = !soldOut && game.player.spiritStones >= shopItem.price;
-        return (
-          <div className={`item-row shop-item-row grade-card grade-${item.grade}${soldOut ? " sold-out" : ""}`} key={shopItem.itemId}>
-            <div className="shop-item-main">
-              <div className="shop-item-title">
-                <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
-                <GradeBadge compact grade={item.grade} />
-              </div>
-              <small>{item.description}</small>
-              <span>库存 {stockText}</span>
+    <>
+      <GameDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title={shop.name}
+        subtitle={shop.ownerName ? `${shop.ownerName} · ${refresh.label}` : refresh.label}
+        motionEnabled={motionEnabled}
+        className="shop-catalog-dialog"
+      >
+        <div className="shop-catalog">
+          <section className="shop-catalog-summary">
+            <div>
+              <h3>{shop.description}</h3>
+              <p>
+                当前灵石：<strong>{game.player.spiritStones}</strong>
+              </p>
             </div>
-            <button disabled={!canBuy} onClick={() => buy(shopItem.itemId)}>
-              {soldOut ? "售罄" : `${shopItem.price} 灵石`}
-            </button>
-          </div>
-        );
-      })}
-      {displayItems.length === 0 ? <p className="shop-refresh-note">此地暂时没有适合当前州域的货物。</p> : null}
+            <span>{refresh.remainingDays !== null ? `${refresh.remainingDays}天后补货` : "固定库存"}</span>
+          </section>
+          <section className="shop-category-tabs" aria-label="商品分类">
+            {visibleTabs.map((tab) => (
+              <button className={tab.key === category ? "active" : ""} key={tab.key} onClick={() => changeCategory(tab.key)} type="button">
+                <GameIcon name={tab.iconName} size={14} />
+                <span>{tab.label}</span>
+                <small>{categoryCounts[tab.key]}</small>
+              </button>
+            ))}
+          </section>
+          <ShopItemGrid displayItems={pageItems} onSelect={setSelectedItemId} pageSize={pageSize} selectedItemId={selectedItemId} />
+          {filteredItems.length > pageSize ? (
+            <div className="shop-page-controls">
+              <button disabled={safePage <= 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>
+                上一页
+              </button>
+              <span>
+                {safePage + 1} / {pageCount}
+              </span>
+              <button disabled={safePage >= pageCount - 1} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>
+                下一页
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </GameDialog>
+      <ShopPurchaseDialog
+        entry={selectedEntry}
+        game={game}
+        motionEnabled={motionEnabled}
+        onBuy={buy}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setSelectedItemId(null);
+          }
+        }}
+        open={open && Boolean(selectedEntry)}
+      />
+    </>
+  );
+}
+
+function ShopItemGrid({
+  displayItems,
+  onSelect,
+  pageSize,
+  selectedItemId,
+}: {
+  displayItems: ShopDisplayItem[];
+  onSelect: (itemId: string) => void;
+  pageSize: number;
+  selectedItemId: string | null;
+}) {
+  const slots = useMemo(() => Array.from({ length: pageSize }, (_, index) => displayItems[index] ?? null), [displayItems, pageSize]);
+
+  return (
+    <div className="shop-grid-wrap">
+      <div className="shop-catalog-grid">
+        {slots.map((entry, index) =>
+          entry ? (
+            <ItemSlot
+              amountLabel={getShopSlotStockLabel(entry)}
+              className={`shop-grid-slot item-grade-press${entry.soldOut ? " sold-out" : ""}`}
+              description={`${formatShopNumber(entry.shopItem.price)} 灵石`}
+              grade={entry.item.grade}
+              iconName={getShopItemIconName(entry.item)}
+              key={entry.shopItem.itemId}
+              name={formatItemName(entry.item)}
+              onClick={() => onSelect(entry.shopItem.itemId)}
+              state={selectedItemId === entry.shopItem.itemId ? "selected" : "filled"}
+            />
+          ) : (
+            <ItemSlot className="shop-grid-slot empty" key={`empty-${pageSize}-${index}`} state="empty" />
+          ),
+        )}
+      </div>
+      {displayItems.length === 0 ? <p className="shop-refresh-note">此分类暂时没有货物。</p> : null}
     </div>
   );
+}
+
+function ShopPurchaseDialog({
+  entry,
+  game,
+  motionEnabled,
+  onBuy,
+  onOpenChange,
+  open,
+}: {
+  entry: ShopDisplayItem | null;
+  game: GameState;
+  motionEnabled: boolean;
+  onBuy: (itemId: string) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  if (!entry) {
+    return null;
+  }
+
+  const { item, shopItem, soldOut } = entry;
+  const canAfford = game.player.spiritStones >= shopItem.price;
+  const canBuy = !soldOut && canAfford;
+  const actionLabel = soldOut ? "售罄" : canAfford ? `购买 ${formatShopNumber(shopItem.price)} 灵石` : "灵石不足";
+
+  return (
+    <GameDialog
+      className="shop-purchase-dialog"
+      motionEnabled={motionEnabled}
+      onOpenChange={onOpenChange}
+      open={open}
+      overlayClassName="shop-purchase-overlay"
+      subtitle={`${shopCategoryLabels[getShopItemCategory(entry)]} · 库存 ${getShopStockText(entry)}`}
+      title={formatItemName(item)}
+    >
+      <section className={`shop-selected-item shop-purchase-card grade-card grade-${item.grade}${soldOut ? " sold-out" : ""}`}>
+        <div className="shop-selected-heading">
+          <GameIcon name={getShopItemIconName(item)} size={18} />
+          <div>
+            <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
+            <span>
+              {shopCategoryLabels[getShopItemCategory(entry)]} · 库存 {getShopStockText(entry)}
+            </span>
+          </div>
+          <GradeBadge compact grade={item.grade} />
+        </div>
+        <p>{item.description}</p>
+        <div className="shop-selected-meta">
+          <span>
+            价格 <strong>{formatShopNumber(shopItem.price)}</strong> 灵石
+          </span>
+          <span>当前灵石 {formatShopNumber(game.player.spiritStones)}</span>
+        </div>
+        <button disabled={!canBuy} onClick={() => onBuy(shopItem.itemId)} type="button">
+          {actionLabel}
+        </button>
+      </section>
+    </GameDialog>
+  );
+}
+
+type ShopItemCategoryKey = Exclude<ShopCategoryKey, "all">;
+
+function useShopPageSize(open: boolean): number {
+  const [pageSize, setPageSize] = useState(() => getCurrentShopPageSize());
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const media = window.matchMedia(SHOP_WIDE_MEDIA_QUERY);
+    const sync = () => setPageSize(media.matches ? SHOP_WIDE_PAGE_SIZE : SHOP_MOBILE_PAGE_SIZE);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, [open]);
+
+  return pageSize;
+}
+
+function getCurrentShopPageSize(): number {
+  if (typeof window === "undefined") {
+    return SHOP_MOBILE_PAGE_SIZE;
+  }
+  return window.matchMedia(SHOP_WIDE_MEDIA_QUERY).matches ? SHOP_WIDE_PAGE_SIZE : SHOP_MOBILE_PAGE_SIZE;
+}
+
+function getShopCategoryCounts(displayItems: ShopDisplayItem[]): Record<ShopCategoryKey, number> {
+  const counts: Record<ShopCategoryKey, number> = { all: displayItems.length, pill: 0, artifact: 0, material: 0, misc: 0 };
+  displayItems.forEach((entry) => {
+    counts[getShopItemCategory(entry)] += 1;
+  });
+  return counts;
+}
+
+function getShopItemCategory(entry: ShopDisplayItem): ShopItemCategoryKey {
+  if (entry.shopItem.shopCategory) {
+    return entry.shopItem.shopCategory;
+  }
+  if (entry.item.equipment || entry.item.category === "equipment") {
+    return "artifact";
+  }
+  if (entry.item.category === "pill") {
+    return "pill";
+  }
+  if (entry.item.category === "material") {
+    return "material";
+  }
+  return "misc";
+}
+
+function getShopItemIconName(item: ItemConfig): GameIconName {
+  if (item.equipment) {
+    return shopEquipmentSlotIcons[item.equipment.slot] ?? "equipment";
+  }
+  if (item.category === "blueprint") {
+    return "system-library";
+  }
+  if (item.category === "recipe") {
+    return "system-alchemy";
+  }
+  if (item.category === "pill") {
+    return "item-pill";
+  }
+  if (item.category === "material") {
+    return "item-material";
+  }
+  return "item";
+}
+
+const shopEquipmentSlotIcons: Record<string, GameIconName> = {
+  weapon: "equipment-weapon",
+  robe: "equipment-robe",
+  helmet: "equipment-helmet",
+  wrist: "equipment-wrist",
+  boots: "equipment-boots",
+  ring: "equipment-ring",
+  amulet: "equipment-amulet",
+  artifact: "equipment-artifact",
+};
+
+function getWorkshopSlotLabel(slotId: string): string {
+  return equipmentSlots.find((slot) => slot.id === slotId)?.label ?? "装备";
+}
+
+function getWorkshopCostSlots(cost: Cost, game: GameState): Array<{ id: string; name: string; required: number; owned: number; kind: "item" | "stones"; iconName: GameIconName }> {
+  const slots: Array<{ id: string; name: string; required: number; owned: number; kind: "item" | "stones"; iconName: GameIconName }> = [];
+  if ((cost.spiritStones ?? 0) > 0) {
+    slots.push({
+      id: "spirit_stones",
+      name: "灵石",
+      required: cost.spiritStones ?? 0,
+      owned: game.player.spiritStones,
+      kind: "stones",
+      iconName: "resource-stones",
+    });
+  }
+  cost.items?.forEach((part) => {
+    const item = getItem(part.itemId);
+    slots.push({
+      id: item.id,
+      name: formatItemName(item),
+      required: part.amount,
+      owned: game.inventory.items[item.id] ?? 0,
+      kind: "item",
+      iconName: getShopItemIconName(item),
+    });
+  });
+  return slots;
+}
+
+function getShopSlotStockLabel(entry: ShopDisplayItem): string {
+  return entry.remaining === null ? "库存不限" : `库存x${entry.remaining}`;
+}
+
+function getShopStockText(entry: ShopDisplayItem): string {
+  return entry.remaining === null ? "不限" : `${entry.remaining}/${entry.shopItem.stock ?? entry.remaining}`;
+}
+
+function formatShopNumber(value: number): string {
+  return value.toLocaleString("zh-CN");
 }
 
 function getGradeNameClass(item: ItemConfig): string {
   return `grade-name grade-${item.grade}${shouldEmphasizeItemGrade(item.grade) ? " strong" : ""}`;
 }
 
-function TaskBoard({ game, onChange }: { game: GameState; onChange: ExploreChange }) {
+function TaskBoardDialog({
+  game,
+  motionEnabled,
+  onChange,
+  onOpenChange,
+  open,
+}: {
+  game: GameState;
+  motionEnabled: boolean;
+  onChange: ExploreChange;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
   const visibleTasks = tasks.filter((task) => !task.regionId || task.regionId === game.world.regionId);
 
   function accept(taskId: string) {
-    const nextTask: QuestState = { status: "accepted", progress: game.world.tasks[taskId]?.progress ?? 0 };
-    onChange(
-      appendLog(
+    onChange((currentGame) => {
+      const nextTask: QuestState = { status: "accepted", progress: currentGame.world.tasks[taskId]?.progress ?? 0 };
+      return appendLog(
         {
-          ...game,
+          ...currentGame,
           world: {
-            ...game.world,
-            tasks: { ...game.world.tasks, [taskId]: nextTask },
+            ...currentGame.world,
+            tasks: { ...currentGame.world.tasks, [taskId]: nextTask },
           },
         },
         "你接下宗门任务。",
-      ),
-    );
+      );
+    });
   }
 
   function complete(taskId: string) {
-    const task = tasks.find((item) => item.id === taskId);
-    if (!task) {
-      return;
-    }
-    const hasItems = task.requiredItems?.every((item) => (game.inventory.items[item.itemId] ?? 0) >= item.amount) ?? true;
-    const hasFlags = task.requiredFlags?.every((flag) => flag === "visited_luoxia" && (game.world.tasks.deliver_letter?.progress ?? 0) > 0) ?? true;
-    if (!hasItems || !hasFlags) {
-      onChange(appendLog(game, "任务条件尚未完成。"));
-      return;
-    }
-    const paid = removeItems(game, task.requiredItems);
-    const rewarded = addItems(
-      {
-        ...paid,
-        player: {
-          ...paid.player,
-          spiritStones: paid.player.spiritStones + task.rewards.spiritStones,
-        },
-        world: {
-          ...paid.world,
-          sectContribution: paid.world.sectContribution + task.rewards.contribution,
-          sectReputation: paid.world.sectReputation + task.rewards.reputation,
-          tasks: {
-            ...paid.world.tasks,
-            [taskId]: { status: "completed", progress: 1 },
+    onChange((currentGame) => {
+      const task = tasks.find((item) => item.id === taskId);
+      if (!task) {
+        return currentGame;
+      }
+      const hasItems = task.requiredItems?.every((item) => (currentGame.inventory.items[item.itemId] ?? 0) >= item.amount) ?? true;
+      const hasFlags = task.requiredFlags?.every((flag) => flag === "visited_luoxia" && (currentGame.world.tasks.deliver_letter?.progress ?? 0) > 0) ?? true;
+      if (!hasItems || !hasFlags) {
+        return appendLog(currentGame, "任务条件尚未完成。");
+      }
+      const paid = removeItems(currentGame, task.requiredItems);
+      const rewarded = addItems(
+        {
+          ...paid,
+          player: {
+            ...paid.player,
+            spiritStones: paid.player.spiritStones + task.rewards.spiritStones,
+          },
+          world: {
+            ...paid.world,
+            sectContribution: paid.world.sectContribution + task.rewards.contribution,
+            sectReputation: paid.world.sectReputation + task.rewards.reputation,
+            tasks: {
+              ...paid.world.tasks,
+              [taskId]: { status: "completed", progress: 1 },
+            },
           },
         },
-      },
-      task.rewards.items,
-    );
-    onChange(appendLog(rewarded, `完成任务《${task.title}》，贡献 +${task.rewards.contribution}。`));
+        task.rewards.items,
+      );
+      return appendLog(rewarded, `完成任务《${task.title}》，贡献 +${task.rewards.contribution}。`);
+    });
   }
 
   return (
-    <section className="task-board">
-      <div className="section-heading">
-        <h2>
-          <GameIcon name="combat-log" size={18} />
-          任务榜
-        </h2>
-        <span>{visibleTasks.length} 件</span>
-      </div>
-      {visibleTasks.map((task) => {
-        const state = game.world.tasks[task.id]?.status ?? "available";
-        return (
-          <div className="task-row" key={task.id}>
-            <div>
-              <strong>{task.title}</strong>
-              <small>{task.description}</small>
-              <small>需求：{task.requirementText}</small>
+    <GameDialog
+      className="task-board-dialog"
+      motionEnabled={motionEnabled}
+      onOpenChange={onOpenChange}
+      open={open}
+      subtitle={`${visibleTasks.length} 件可见差事`}
+      title="任务榜"
+    >
+      <div className="task-board-list">
+        {visibleTasks.map((task) => {
+          const state = game.world.tasks[task.id]?.status ?? "available";
+          return (
+            <div className="task-row" key={task.id}>
+              <div>
+                <strong>{task.title}</strong>
+                <small>{task.description}</small>
+                <small>需求：{task.requirementText}</small>
+              </div>
+              {state === "available" ? <button onClick={() => accept(task.id)}>接取</button> : null}
+              {state === "accepted" ? <button onClick={() => complete(task.id)}>完成</button> : null}
+              {state === "completed" ? <span className="done-tag">已完成</span> : null}
             </div>
-            {state === "available" ? <button onClick={() => accept(task.id)}>接取</button> : null}
-            {state === "accepted" ? <button onClick={() => complete(task.id)}>完成</button> : null}
-            {state === "completed" ? <span className="done-tag">已完成</span> : null}
-          </div>
-        );
-      })}
-    </section>
+          );
+        })}
+      </div>
+    </GameDialog>
   );
 }

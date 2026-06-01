@@ -99,7 +99,11 @@ export interface ShopItem {
   price: number;
   regionId?: string;
   stock?: number;
+  shopCategory?: ShopItemCategoryKey;
 }
+
+export type ShopCategoryKey = "all" | "pill" | "artifact" | "material" | "misc";
+export type ShopItemCategoryKey = Exclude<ShopCategoryKey, "all">;
 
 export type ShopRefreshInterval = "monthly" | "seasonal" | "none";
 
@@ -199,18 +203,30 @@ export const sceneNpcHotspots = {
 
 export const defaultShopConfigId = "qingyun_general_market";
 
+const qingyunGeneralGoods: ShopItem[] = [
+  { itemId: "healing_powder", price: 55, stock: 6 },
+  { itemId: "qi_pill", price: 144, stock: 4 },
+  { itemId: "rough_iron_sword", price: 40, stock: 2 },
+  { itemId: "cloth_robe", price: 28, stock: 2 },
+  { itemId: "cloth_boots", price: 18, stock: 2 },
+  { itemId: "low_sword", price: 396, stock: 1 },
+  { itemId: "foundation_pill", price: 2640, stock: 1 },
+  { itemId: "spirit_herb", price: 30, stock: 8 },
+  { itemId: "qi_grass", price: 60, stock: 3 },
+  { itemId: "spirit_grass_seed", price: 35, stock: 3, shopCategory: "misc" },
+  { itemId: "qi_grass_seed", price: 85, stock: 2, shopCategory: "misc" },
+  { itemId: "spirit_spring_water", price: 384, stock: 2, shopCategory: "misc" },
+  { itemId: "healing_powder_recipe", price: 28, stock: 1, shopCategory: "misc" },
+  { itemId: "qi_pill_recipe", price: 216, stock: 1, shopCategory: "misc" },
+];
+
 export const shopConfigs: ShopConfig[] = [
   {
     id: defaultShopConfigId,
     name: "青云坊市",
-    description: "青云镇散修最常去的坊市摊位，常备基础丹药和低阶法器。",
+    description: "青云镇散修最常去的坊市摊位，前期丹药、法器、材料和杂货都能补齐。",
     refreshInterval: "monthly",
-    items: [
-      { itemId: "healing_powder", price: 55, stock: 6 },
-      { itemId: "qi_pill", price: 144, stock: 4 },
-      { itemId: "low_sword", price: 396, stock: 1 },
-      { itemId: "foundation_pill", price: 2640, stock: 1 },
-    ],
+    items: qingyunGeneralGoods,
   },
   {
     id: "xiaoxiao_shop",
@@ -218,17 +234,12 @@ export const shopConfigs: ShopConfig[] = [
     ownerName: "清雨",
     description: "前期杂货、丹药和低阶法器都能在这里补齐，适合出镇历练前备货。",
     refreshInterval: "monthly",
-    items: [
-      { itemId: "healing_powder", price: 55, stock: 6 },
-      { itemId: "qi_pill", price: 144, stock: 4 },
-      { itemId: "low_sword", price: 396, stock: 1 },
-      { itemId: "foundation_pill", price: 2640, stock: 1 },
-    ],
+    items: qingyunGeneralGoods,
   },
   {
     id: "li_baicao_herbs",
     name: "李百草草药铺",
-    ownerName: "苏达",
+    ownerName: "李百草",
     description: "草药铺主售灵草、灵植种子和基础丹药，库存每月随采药队归来刷新。",
     refreshInterval: "monthly",
     items: [
@@ -239,16 +250,22 @@ export const shopConfigs: ShopConfig[] = [
       { itemId: "healing_powder", price: 55, stock: 5 },
       { itemId: "qi_pill", price: 144, stock: 3 },
       { itemId: "foundation_pill", price: 2640, stock: 1 },
+      { itemId: "healing_powder_recipe", price: 28, stock: 1, shopCategory: "misc" },
+      { itemId: "qi_pill_recipe", price: 216, stock: 1, shopCategory: "misc" },
+      { itemId: "foundation_pill_recipe", price: 1680, stock: 1, shopCategory: "misc" },
     ],
   },
   {
     id: "zhao_refinery",
     name: "赵家炼器铺",
-    description: "炼器铺库存以兵刃和基础防具为主，法器补货较慢。",
+    ownerName: "赵铁匠",
+    description: "炼器铺库存以兵刃、基础防具和入门炼器图纸为主，法器补货较慢。",
     refreshInterval: "seasonal",
     items: [
       { itemId: "rough_iron_sword", price: 40, stock: 2 },
       { itemId: "low_sword", price: 396, stock: 1 },
+      { itemId: "rough_iron_sword_blueprint", price: 24, stock: 1, shopCategory: "misc" },
+      { itemId: "low_sword_blueprint", price: 180, stock: 1, shopCategory: "misc" },
     ],
   },
   {
@@ -417,7 +434,7 @@ export const regions: RegionNode[] = [
           { itemId: "spirit_herb", amount: 1 },
           { itemId: "spirit_grass_seed", amount: 1 },
         ],
-        npcIds: ["qing_yu", "su_da", "city_manor_clerk", "qingyun_innkeeper", "chen_banxian"],
+        npcIds: ["qing_yu", "su_da", "zhao_tiejiang", "chen_banxian", "li_baicao", "city_manor_clerk", "qingyun_innkeeper", "gu_qingluo"],
         taskIds: ["collect_qi_grass", "hunt_black_wind", "deliver_letter"],
         sceneMapImageKey: "qingyun_town",
         sceneMapHotspots: [

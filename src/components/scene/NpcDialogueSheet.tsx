@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getNpcPortrait } from "../../data/assets";
-import { BottomSheet, GameButton } from "../ui";
+import { GameButton, GameDialog } from "../ui";
 import type { SceneHotspotDialogueAction, SceneHotspotModel } from "./SceneHotspot";
 
 export function NpcDialogueSheet({
@@ -35,7 +35,7 @@ export function NpcDialogueSheet({
   const dialogueText = activeAction?.text ?? hotspot.text ?? "对方微微颔首，似乎还有话未曾说尽。";
 
   return (
-    <BottomSheet
+    <GameDialog
       open={open}
       onOpenChange={onOpenChange}
       title={hotspot.label}
@@ -80,6 +80,6 @@ export function NpcDialogueSheet({
           </div>
         ) : null}
       </div>
-    </BottomSheet>
+    </GameDialog>
   );
 }

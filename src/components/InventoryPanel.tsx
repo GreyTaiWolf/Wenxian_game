@@ -27,7 +27,7 @@ import type { EquipmentBonus, EquipmentInstance, EquipmentSlotId, GameState, Ite
 import { useActiveGame, useSettings, useUpdateGame } from "../stores/gameStore";
 import { useUiStore, type InventoryTab } from "../stores/uiStore";
 import { GameIcon, type GameIconName } from "./GameIcon";
-import { BottomSheet, GameButton, GradeBadge, ItemSlot, useGameToast } from "./ui";
+import { AffixRow, BottomSheet, GameButton, GradeBadge, ItemSlot, useGameToast } from "./ui";
 
 interface InventoryGridEntry {
   id: string;
@@ -55,6 +55,8 @@ const categoryLabels: Record<ItemConfig["category"], string> = {
   material: "材料",
   pill: "丹药",
   quest: "任务",
+  blueprint: "图纸",
+  recipe: "丹方",
 };
 
 const statOrder: Array<keyof Stats> = ["maxHp", "maxSpirit", "attack", "defense", "spiritSense", "speed", "dodgeRate", "critRate", "critDamage"];
@@ -103,7 +105,7 @@ export default function InventoryPanel() {
 
       {tab === "equipment" ? <EquipmentPanel /> : null}
       {tab === "items" ? (
-        <ItemList tabKey="items" title="背包" subtitle="物品" categories={["currency", "quest"]} />
+        <ItemList tabKey="items" title="背包" subtitle="物品" categories={["currency", "quest", "blueprint", "recipe"]} />
       ) : null}
       {tab === "pills" ? <ItemList tabKey="pills" title="背包" subtitle="丹药" categories={["pill"]} /> : null}
       {tab === "materials" ? (
@@ -564,10 +566,7 @@ function ItemDetailCard({
             <h3>词条</h3>
             <div className="grade-affix-list">
               {visibleAffixes.map((affix) => (
-                <span key={affix.id}>
-                  <strong>{affix.name}</strong>
-                  <small>{seal?.affixesSealed && affix.special ? "境界不足，特殊词条暂未激活" : affix.description}</small>
-                </span>
+                <AffixRow affix={affix} description={seal?.affixesSealed && affix.special ? "境界不足，特殊词条暂未激活" : affix.description} key={affix.id} />
               ))}
             </div>
           </section>
@@ -619,6 +618,12 @@ function getItemIconName(item: ItemConfig, fallback: GameIconName = "item"): Gam
   }
   if (item.category === "material") {
     return "item-material";
+  }
+  if (item.category === "blueprint") {
+    return "system-library";
+  }
+  if (item.category === "recipe") {
+    return "system-alchemy";
   }
   return fallback;
 }

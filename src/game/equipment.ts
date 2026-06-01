@@ -1,5 +1,7 @@
 import { getItem, itemGradeMetas, normalizeInventoryItemId, normalizeItemId } from "../data/items";
+import { canAffixAppear, getAffixConfig } from "../data/affixPools";
 import { getRealm, majorRealmOrder, realmPhaseOrder } from "../data/progression";
+import { qualityGrades } from "../data/qualityGrades";
 import { calculateRealmPower } from "./derived";
 import { applyBalanceLimits, capFinalStats } from "./equipmentBalanceLimits";
 import { calculateAffixBonuses, calculateEquipmentPowerBonus, EQUIPMENT_BALANCE_VERSION, generateEquipment, getMajorRealmRank, mergeBonuses } from "./generateEquipment";
@@ -444,7 +446,7 @@ function normalizeEquipmentInstance(rawInstance: unknown, usedInstanceIds: Set<s
     createdAt,
     rng: createSeededRng(`${EQUIPMENT_BALANCE_VERSION}:${id}:${itemId}:${createdAt}`),
   });
-  const affixes = normalizeAffixes(source.affixes, fallback.affixes);
+  const affixes = normalizeAffixes(source.affixes, fallback.affixes, realmTier, item.grade, slot);
   const needsRebalance = source.equipmentBalanceVersion !== EQUIPMENT_BALANCE_VERSION;
 
   if (needsRebalance) {
@@ -510,11 +512,52 @@ function normalizeEquipmentBonuses(rawBonuses: EquipmentBonus | undefined, fallb
   return Object.keys(normalized).length ? normalized : fallback;
 }
 
-function normalizeAffixes(rawAffixes: ItemAffix[] | undefined, fallbackAffixes: ItemAffix[] | undefined): ItemAffix[] {
+function normalizeAffixes(
+  rawAffixes: ItemAffix[] | undefined,
+  fallbackAffixes: ItemAffix[] | undefined,
+  realmTier: MajorRealmId,
+  quality: EquipmentInstance["quality"],
+  slot: EquipmentSlotId,
+): ItemAffix[] {
   const source = Array.isArray(rawAffixes) ? rawAffixes : fallbackAffixes ?? [];
-  return source
-    .filter((affix) => affix && typeof affix.id === "string" && typeof affix.name === "string" && typeof affix.description === "string")
-    .map((affix) => ({ ...affix }));
+  const targetCount = Math.min(qualityGrades[quality].affixCount[1], Math.max(source.length, fallbackAffixes?.length ?? 0));
+  const normalized: ItemAffix[] = [];
+  const seenIds = new Set<string>();
+
+  function pushAffix(rawAffix: Partial<ItemAffix> | undefined): void {
+    if (!rawAffix || typeof rawAffix.id !== "string" || seenIds.has(rawAffix.id)) {
+      return;
+    }
+    const config = getAffixConfig(rawAffix.id);
+    if (!config || !canAffixAppear(config, realmTier, quality, slot)) {
+      return;
+    }
+    seenIds.add(config.id);
+    normalized.push({
+      id: config.id,
+      name: typeof rawAffix.name === "string" ? rawAffix.name : config.name,
+      description: typeof rawAffix.description === "string" ? rawAffix.description : config.description,
+      grade: config.grade,
+      role: config.role,
+      category: config.category,
+      stat: config.stat,
+      type: config.type,
+      value: typeof rawAffix.value === "number" && Number.isFinite(rawAffix.value) ? rawAffix.value : undefined,
+      effect: config.effect,
+      special: config.special,
+      exclusive: config.exclusive,
+      unique: config.unique,
+    });
+  }
+
+  source.forEach(pushAffix);
+  (fallbackAffixes ?? []).forEach((affix) => {
+    if (normalized.length < targetCount) {
+      pushAffix(affix);
+    }
+  });
+
+  return normalized.slice(0, targetCount);
 }
 
 function getRawEquipmentSlotValue(equipment: Partial<InventoryState["equipment"]> | undefined, slotId: EquipmentSlotId): unknown {

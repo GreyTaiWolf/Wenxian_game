@@ -2,35 +2,110 @@ import { getSpiritArrayConfig } from "../data/cave";
 import { formatItemName, itemGradeMetas } from "../data/items";
 import { CALENDAR_DAYS_PER_YEAR } from "../data/time";
 import {
+  createDefaultSpiritFieldRegionState,
   createDefaultSpiritFieldState,
   getNextSpiritFieldLevelConfig,
   getSpiritFieldLevelConfig,
+  getSpiritFieldRegionConfig,
   getSpiritPlant,
   getSpiritPlantBySeed,
+  spiritFieldRegionConfigs,
   spiritPlants,
 } from "../data/spiritPlants";
 import { getWeatherConfig } from "../data/weather";
-import type { GameState, ItemAmount, SpiritFieldState, SpiritPlantInstance } from "../types";
+import type { GameState, ItemAmount, SpiritFieldRegionState, SpiritFieldState, SpiritPlantInstance } from "../types";
 import { addItems, appendLog, canAffordCost, describeCost, removeItems, spendCost } from "./state";
 
 export function normalizeSpiritFieldState(field: Partial<SpiritFieldState> | undefined): SpiritFieldState {
   const defaults = createDefaultSpiritFieldState();
-  const level = normalizeLevel(field?.level);
-  const levelConfig = getSpiritFieldLevelConfig(level);
-  const plots = defaults.plots.map((defaultPlot, index) => {
-    const rawPlot = field?.plots?.[index];
+  const raw = field as (Partial<SpiritFieldState> & { level?: number; plots?: SpiritFieldRegionState["plots"] }) | undefined;
+
+  if (Array.isArray(raw?.plots)) {
+    const legacyRegion = normalizeRegionState("home_cave", { level: raw.level, unlocked: true, plots: raw.plots });
     return {
-      id: typeof rawPlot?.id === "string" ? rawPlot.id : defaultPlot.id,
-      unlocked: index < levelConfig.plotCount || Boolean(rawPlot?.unlocked),
-      plant: normalizePlant(rawPlot?.plant, defaultPlot.id),
+      ...defaults,
+      activeRegionId: "home_cave",
+      totalHarvests: normalizeNonNegativeInteger(raw?.totalHarvests),
+      regions: {
+        ...defaults.regions,
+        home_cave: legacyRegion,
+      },
     };
-  });
+  }
+
+  const regions = Object.fromEntries(
+    spiritFieldRegionConfigs.map((config) => {
+      const normalized = normalizeRegionState(config.regionId, field?.regions?.[config.regionId]);
+      return [config.regionId, normalized];
+    }),
+  );
+  const activeRegionId =
+    typeof field?.activeRegionId === "string" && regions[field.activeRegionId]?.unlocked ? field.activeRegionId : spiritFieldRegionConfigs[0].regionId;
 
   return {
-    level,
+    activeRegionId,
+    regions,
     totalHarvests: normalizeNonNegativeInteger(field?.totalHarvests),
-    plots,
   };
+}
+
+export function setActiveSpiritFieldRegion(game: GameState, regionId: string): GameState {
+  const field = normalizeSpiritFieldState(game.cave.spiritField);
+  const region = field.regions[regionId];
+  if (!region) {
+    return appendLog(game, "这片灵田尚未登记在洞府阵图中。");
+  }
+  if (!region.unlocked) {
+    const config = getSpiritFieldRegionConfig(regionId);
+    return appendLog(game, `${config.name}尚未开辟，需先扩展灵田。`);
+  }
+  return {
+    ...game,
+    cave: {
+      ...game.cave,
+      spiritField: {
+        ...field,
+        activeRegionId: regionId,
+      },
+    },
+  };
+}
+
+export function unlockSpiritFieldRegion(game: GameState, regionId: string): GameState {
+  const field = normalizeSpiritFieldState(game.cave.spiritField);
+  const region = field.regions[regionId];
+  const config = getSpiritFieldRegionConfig(regionId);
+  if (!region) {
+    return appendLog(game, "这片灵田尚未登记在洞府阵图中。");
+  }
+  if (region.unlocked) {
+    return appendLog(game, `${config.name}已经开辟。`);
+  }
+  if (!config.unlockCost) {
+    return appendLog(game, `${config.name}暂不可扩展。`);
+  }
+  if (!canAffordCost(game, config.unlockCost)) {
+    return appendLog(game, `开辟${config.name}所需资源不足：${describeCost(config.unlockCost)}。`);
+  }
+  const paidGame = spendCost(game, config.unlockCost);
+  const openedRegion = normalizeRegionState(regionId, { ...region, unlocked: true });
+  return appendLog(
+    {
+      ...paidGame,
+      cave: {
+        ...paidGame.cave,
+        spiritField: {
+          ...field,
+          activeRegionId: regionId,
+          regions: {
+            ...field.regions,
+            [regionId]: openedRegion,
+          },
+        },
+      },
+    },
+    `你以阵旗牵引地脉，开辟了${config.name}。`,
+  );
 }
 
 export function advanceSpiritFieldByDays(game: GameState, days: number): GameState {
@@ -39,42 +114,57 @@ export function advanceSpiritFieldByDays(game: GameState, days: number): GameSta
     return game;
   }
   const field = normalizeSpiritFieldState(game.cave.spiritField);
-  if (!field.plots.some((plot) => plot.plant)) {
+  if (!Object.values(field.regions).some((region) => region.unlocked && region.plots.some((plot) => plot.plant))) {
     return { ...game, cave: { ...game.cave, spiritField: field } };
   }
 
-  const multiplier = getSpiritFieldGrowthMultiplier(game);
-  const levelConfig = getSpiritFieldLevelConfig(field.level);
-  const growthDays = safeDays * multiplier;
+  const nextRegions = Object.fromEntries(
+    Object.entries(field.regions).map(([regionId, region]) => {
+      if (!region.unlocked) {
+        return [regionId, region];
+      }
+      const multiplier = getSpiritFieldGrowthMultiplier(game, regionId);
+      const levelConfig = getSpiritFieldLevelConfig(region.level);
+      const growthDays = safeDays * multiplier;
+      return [
+        regionId,
+        {
+          ...region,
+          plots: region.plots.map((plot) => {
+            if (!plot.plant) {
+              return plot;
+            }
+            const species = getSpiritPlant(plot.plant.speciesId);
+            const maxYears = Math.min(species.maxMeaningfulYears, levelConfig.maxPlantYears);
+            const totalProgress = plot.plant.growthProgressDays + growthDays;
+            const gainedYears = Math.floor(totalProgress / CALENDAR_DAYS_PER_YEAR);
+            return {
+              ...plot,
+              plant: {
+                ...plot.plant,
+                years: Math.min(maxYears, plot.plant.years + gainedYears),
+                growthProgressDays: gainedYears > 0 ? totalProgress % CALENDAR_DAYS_PER_YEAR : totalProgress,
+              },
+            };
+          }),
+        },
+      ];
+    }),
+  );
+
   return {
     ...game,
     cave: {
       ...game.cave,
       spiritField: {
         ...field,
-        plots: field.plots.map((plot) => {
-          if (!plot.plant) {
-            return plot;
-          }
-          const species = getSpiritPlant(plot.plant.speciesId);
-          const maxYears = Math.min(species.maxMeaningfulYears, levelConfig.maxPlantYears);
-          const totalProgress = plot.plant.growthProgressDays + growthDays;
-          const gainedYears = Math.floor(totalProgress / CALENDAR_DAYS_PER_YEAR);
-          return {
-            ...plot,
-            plant: {
-              ...plot.plant,
-              years: Math.min(maxYears, plot.plant.years + gainedYears),
-              growthProgressDays: gainedYears > 0 ? totalProgress % CALENDAR_DAYS_PER_YEAR : totalProgress,
-            },
-          };
-        }),
+        regions: nextRegions,
       },
     },
   };
 }
 
-export function plantSpiritSeed(game: GameState, plotId: string, seedItemId: string): GameState {
+export function plantSpiritSeed(game: GameState, regionId: string, plotId: string, seedItemId: string): GameState {
   const species = getSpiritPlantBySeed(seedItemId);
   if (!species) {
     return appendLog(game, "这枚种子暂未登记灵植谱，不能种入灵田。");
@@ -84,7 +174,12 @@ export function plantSpiritSeed(game: GameState, plotId: string, seedItemId: str
   }
 
   const field = normalizeSpiritFieldState(game.cave.spiritField);
-  const plot = field.plots.find((item) => item.id === plotId);
+  const region = field.regions[regionId];
+  const regionConfig = getSpiritFieldRegionConfig(regionId);
+  if (!region?.unlocked) {
+    return appendLog(game, `${regionConfig.name}尚未开辟。`);
+  }
+  const plot = region.plots.find((item) => item.id === plotId);
   if (!plot?.unlocked) {
     return appendLog(game, "这块灵田尚未开垦。");
   }
@@ -92,7 +187,7 @@ export function plantSpiritSeed(game: GameState, plotId: string, seedItemId: str
     return appendLog(game, "这块灵田已经种有灵植。");
   }
 
-  const levelConfig = getSpiritFieldLevelConfig(field.level);
+  const levelConfig = getSpiritFieldLevelConfig(region.level);
   if (itemGradeMetas[species.grade].tier > itemGradeMetas[levelConfig.maxGrade].tier) {
     return appendLog(game, `当前灵田最高只能承载${levelConfig.maxGrade}品级灵植，需先升级灵田。`);
   }
@@ -104,10 +199,14 @@ export function plantSpiritSeed(game: GameState, plotId: string, seedItemId: str
     plantedAt: game.world.calendar,
     years: 0,
     plotId,
-    growthBonusSnapshot: getSpiritFieldGrowthMultiplier(game),
+    growthBonusSnapshot: getSpiritFieldGrowthMultiplier(game, regionId),
     growthProgressDays: 0,
   };
   const paidGame = removeItems(game, [{ itemId: seedItemId, amount: 1 }]);
+  const nextRegion = {
+    ...region,
+    plots: region.plots.map((item) => (item.id === plotId ? { ...item, plant: planted } : item)),
+  };
   return appendLog(
     {
       ...paidGame,
@@ -115,17 +214,22 @@ export function plantSpiritSeed(game: GameState, plotId: string, seedItemId: str
         ...paidGame.cave,
         spiritField: {
           ...field,
-          plots: field.plots.map((item) => (item.id === plotId ? { ...item, plant: planted } : item)),
+          activeRegionId: regionId,
+          regions: {
+            ...field.regions,
+            [regionId]: nextRegion,
+          },
         },
       },
     },
-    `你将${species.name}种入${formatPlotName(plotId)}，以阵旗护住初生灵机。`,
+    `你将${species.name}种入${regionConfig.name}${formatPlotName(plotId)}，以阵旗护住初生灵机。`,
   );
 }
 
-export function harvestSpiritPlant(game: GameState, plotId: string): GameState {
+export function harvestSpiritPlant(game: GameState, regionId: string, plotId: string): GameState {
   const field = normalizeSpiritFieldState(game.cave.spiritField);
-  const plot = field.plots.find((item) => item.id === plotId);
+  const region = field.regions[regionId];
+  const plot = region?.plots.find((item) => item.id === plotId);
   if (!plot?.plant) {
     return appendLog(game, "这块灵田尚无可收获的灵植。");
   }
@@ -136,6 +240,10 @@ export function harvestSpiritPlant(game: GameState, plotId: string): GameState {
 
   const rewards = scalePlantRewards(species.baseRewards, plot.plant.years, species.matureYears);
   const rewardedGame = addItems(game, rewards);
+  const nextRegion = {
+    ...region,
+    plots: region.plots.map((item) => (item.id === plotId ? { ...item, plant: null } : item)),
+  };
   return appendLog(
     {
       ...rewardedGame,
@@ -144,7 +252,10 @@ export function harvestSpiritPlant(game: GameState, plotId: string): GameState {
         spiritField: {
           ...field,
           totalHarvests: field.totalHarvests + 1,
-          plots: field.plots.map((item) => (item.id === plotId ? { ...item, plant: null } : item)),
+          regions: {
+            ...field.regions,
+            [regionId]: nextRegion,
+          },
         },
       },
     },
@@ -152,13 +263,18 @@ export function harvestSpiritPlant(game: GameState, plotId: string): GameState {
   );
 }
 
-export function uprootSpiritPlant(game: GameState, plotId: string): GameState {
+export function uprootSpiritPlant(game: GameState, regionId: string, plotId: string): GameState {
   const field = normalizeSpiritFieldState(game.cave.spiritField);
-  const plot = field.plots.find((item) => item.id === plotId);
+  const region = field.regions[regionId];
+  const plot = region?.plots.find((item) => item.id === plotId);
   if (!plot?.plant) {
     return appendLog(game, "这块灵田本就空着。");
   }
   const species = getSpiritPlant(plot.plant.speciesId);
+  const nextRegion = {
+    ...region,
+    plots: region.plots.map((item) => (item.id === plotId ? { ...item, plant: null } : item)),
+  };
   return appendLog(
     {
       ...game,
@@ -166,7 +282,10 @@ export function uprootSpiritPlant(game: GameState, plotId: string): GameState {
         ...game.cave,
         spiritField: {
           ...field,
-          plots: field.plots.map((item) => (item.id === plotId ? { ...item, plant: null } : item)),
+          regions: {
+            ...field.regions,
+            [regionId]: nextRegion,
+          },
         },
       },
     },
@@ -174,9 +293,14 @@ export function uprootSpiritPlant(game: GameState, plotId: string): GameState {
   );
 }
 
-export function upgradeSpiritField(game: GameState): GameState {
+export function upgradeSpiritField(game: GameState, regionId: string): GameState {
   const field = normalizeSpiritFieldState(game.cave.spiritField);
-  const nextLevel = getNextSpiritFieldLevelConfig(field.level);
+  const region = field.regions[regionId];
+  const regionConfig = getSpiritFieldRegionConfig(regionId);
+  if (!region?.unlocked) {
+    return appendLog(game, `${regionConfig.name}尚未开辟。`);
+  }
+  const nextLevel = getNextSpiritFieldLevelConfig(region.level);
   if (!nextLevel || !nextLevel.upgradeCost) {
     return appendLog(game, "灵田已升至当前版本上限。");
   }
@@ -184,6 +308,11 @@ export function upgradeSpiritField(game: GameState): GameState {
     return appendLog(game, `升级灵田所需资源不足：${describeCost(nextLevel.upgradeCost)}。`);
   }
   const paidGame = spendCost(game, nextLevel.upgradeCost);
+  const nextRegion = {
+    ...region,
+    level: nextLevel.level,
+    plots: region.plots.map((plot, index) => ({ ...plot, unlocked: index < nextLevel.plotCount || plot.unlocked })),
+  };
   return appendLog(
     {
       ...paidGame,
@@ -191,12 +320,15 @@ export function upgradeSpiritField(game: GameState): GameState {
         ...paidGame.cave,
         spiritField: {
           ...field,
-          level: nextLevel.level,
-          plots: field.plots.map((plot, index) => ({ ...plot, unlocked: index < nextLevel.plotCount || plot.unlocked })),
+          activeRegionId: regionId,
+          regions: {
+            ...field.regions,
+            [regionId]: nextRegion,
+          },
         },
       },
     },
-    `灵田升至 ${nextLevel.level} 级，可承载更高年份与更高品级灵植。`,
+    `${regionConfig.name}升至 ${nextLevel.level} 级，可承载更高年份与更高品级灵植。`,
   );
 }
 
@@ -211,13 +343,15 @@ export function getPlantMaturityLabel(plant: SpiritPlantInstance): string {
   return plant.years >= species.matureYears ? "可收获" : `未成熟，还需 ${species.matureYears - plant.years} 年`;
 }
 
-export function getSpiritFieldGrowthMultiplier(game: GameState): number {
+export function getSpiritFieldGrowthMultiplier(game: GameState, regionId = normalizeSpiritFieldState(game.cave.spiritField).activeRegionId): number {
   const field = normalizeSpiritFieldState(game.cave.spiritField);
-  const fieldConfig = getSpiritFieldLevelConfig(field.level);
+  const region = field.regions[regionId] ?? field.regions.home_cave;
+  const fieldConfig = getSpiritFieldLevelConfig(region.level);
+  const regionConfig = getSpiritFieldRegionConfig(region.regionId);
   const arrayConfig = getSpiritArrayConfig(game.cave.spiritArrayLevel);
   const regionWeather = game.world.weather.regions[game.world.regionId] ?? game.world.weather.global;
   const weatherBonus = Math.max(getWeatherConfig(game.world.weather.global.weatherId).plantGrowthMultiplier, getWeatherConfig(regionWeather.weatherId).plantGrowthMultiplier);
-  return roundMultiplier(fieldConfig.growthMultiplier * (1 + (arrayConfig.multiplier - 1) * 0.5) * weatherBonus);
+  return roundMultiplier(fieldConfig.growthMultiplier * regionConfig.growthMultiplier * (1 + (arrayConfig.multiplier - 1) * 0.5) * weatherBonus);
 }
 
 export function formatPlantYears(years: number): string {
@@ -246,6 +380,27 @@ export function formatPlantYears(years: number): string {
     return value === 1 ? "十年" : `${value}十年`;
   }
   return `${years}年`;
+}
+
+function normalizeRegionState(regionId: string, region: Partial<SpiritFieldRegionState> | undefined): SpiritFieldRegionState {
+  const defaults = createDefaultSpiritFieldRegionState(regionId);
+  const level = normalizeLevel(region?.level);
+  const levelConfig = getSpiritFieldLevelConfig(level);
+  const unlocked = regionId === "home_cave" || Boolean(region?.unlocked ?? defaults.unlocked);
+  const plots = defaults.plots.map((defaultPlot, index) => {
+    const rawPlot = region?.plots?.[index];
+    return {
+      id: typeof rawPlot?.id === "string" ? rawPlot.id : defaultPlot.id,
+      unlocked: unlocked && (index < levelConfig.plotCount || Boolean(rawPlot?.unlocked)),
+      plant: normalizePlant(rawPlot?.plant, defaultPlot.id),
+    };
+  });
+  return {
+    regionId,
+    level,
+    unlocked,
+    plots,
+  };
 }
 
 function normalizePlant(plant: Partial<SpiritPlantInstance> | null | undefined, fallbackPlotId: string): SpiritPlantInstance | null {
@@ -318,7 +473,7 @@ function formatRewards(rewards: ItemAmount[]): string {
 }
 
 function formatPlotName(plotId: string): string {
-  return `第${plotId.replace(/\D/g, "") || "一"}块灵田`;
+  return `第${plotId.replace(/\D/g, "") || "一"}块`;
 }
 
 function roundMultiplier(value: number): number {
