@@ -1,4 +1,4 @@
-import type { CombatActor, CombatState, GameState, RootSave, SaveSlot, SettingsState } from "../types";
+import type { CombatActor, CombatReturnContext, CombatState, GameState, GridCoord, RootSave, SaveSlot, SettingsState } from "../types";
 import { normalizeGridNavigationState } from "../data/gridMaps";
 import { itemGradeOrder, normalizeItemId } from "../data/items";
 import { normalizeNpcWorldState } from "../data/npcs";
@@ -21,10 +21,11 @@ const defaultSettings: SettingsState = {
 const gradePreviewQueryParam = "gradePreview";
 const gradePreviewInstanceIdPrefix = "qa_grade_preview_";
 const gradePreviewItemIdPrefix = "grade_preview_sword_";
+const defaultCombatMaxRounds = 35;
 
 export function createEmptyRootSave(): RootSave {
   return {
-    version: 5,
+    version: 6,
     recentSlotId: null,
     settings: defaultSettings,
     slots: [null, null, null],
@@ -51,7 +52,7 @@ export function normalizeRootSave(input: unknown): RootSave {
   const normalizedRoot = {
     ...createEmptyRootSave(),
     ...parsed,
-    version: 5 as const,
+    version: 6 as const,
     settings: { ...defaultSettings, ...parsed.settings },
     slots: [normalizeSlot(parsed.slots[0]), normalizeSlot(parsed.slots[1]), normalizeSlot(parsed.slots[2])],
   };
@@ -165,7 +166,7 @@ function isRootSaveLike(input: unknown): input is Partial<RootSave> & Pick<RootS
     return false;
   }
   const root = input as Partial<RootSave>;
-  return [1, 2, 3, 4, 5].includes(Number(root.version)) && Array.isArray(root.slots);
+  return [1, 2, 3, 4, 5, 6].includes(Number(root.version)) && Array.isArray(root.slots);
 }
 
 function normalizeLearnedEquipmentRecipes(value: unknown): Record<string, boolean> {
@@ -245,20 +246,90 @@ function clearGradePreviewQueryParam(): void {
 }
 
 function normalizeCombat(combat: CombatState): CombatState {
+  const combatType = combat.combatType ?? "normal";
+  const allies = combat.allies.map(normalizeCombatActor);
+  const enemies = combat.enemies.map(normalizeCombatActor);
+  const turnOrder = Array.isArray(combat.turnOrder) ? combat.turnOrder.filter((actorId) => typeof actorId === "string") : [];
   return {
     ...combat,
-    allies: combat.allies.map(normalizeCombatActor),
-    enemies: combat.enemies.map(normalizeCombatActor),
+    combatType,
+    timeoutResult: combat.timeoutResult ?? (combatType === "survival" ? "victory" : combatType === "normal" ? "escape" : "defeat"),
+    maxRounds: normalizeNonNegativeInt(combat.maxRounds, defaultCombatMaxRounds, 1),
+    preparationComplete: combat.preparationComplete ?? true,
+    turnIndex: normalizeNonNegativeInt(combat.turnIndex, 0),
+    round: normalizeNonNegativeInt(combat.round, 1, 0),
+    lastRoundStarted: typeof combat.lastRoundStarted === "number" && Number.isFinite(combat.lastRoundStarted) ? Math.max(0, Math.floor(combat.lastRoundStarted)) : undefined,
+    allies,
+    enemies,
+    turnOrder: turnOrder.length ? turnOrder : [...allies, ...enemies].filter((actor) => actor.hp > 0).sort((a, b) => b.speed - a.speed).map((actor) => actor.id),
     rewards: {
       ...combat.rewards,
-      items: combat.rewards.items.map((item) => ({ ...item, itemId: normalizeItemId(item.itemId) })),
+      cultivation: normalizeNonNegativeInt(combat.rewards?.cultivation, 0),
+      spiritStones: normalizeNonNegativeInt(combat.rewards?.spiritStones, 0),
+      items: (combat.rewards?.items ?? []).map((item) => ({ ...item, itemId: normalizeItemId(item.itemId), amount: normalizeNonNegativeInt(item.amount, 1, 1) })),
     },
+    returnContext: normalizeCombatReturnContext(combat.returnContext),
+  };
+}
+
+function normalizeCombatReturnContext(context: CombatReturnContext | undefined): CombatReturnContext | undefined {
+  if (!context || typeof context !== "object") {
+    return undefined;
+  }
+  if (typeof context.regionId !== "string" || typeof context.locationId !== "string" || typeof context.sceneId !== "string" || typeof context.activeMapId !== "string") {
+    return undefined;
+  }
+  return {
+    regionId: context.regionId,
+    locationId: context.locationId,
+    sceneId: context.sceneId,
+    activeMapId: context.activeMapId,
+    position: normalizeGridCoord(context.position),
+  };
+}
+
+function normalizeGridCoord(coord: GridCoord | undefined): GridCoord | undefined {
+  if (!coord || typeof coord.x !== "number" || typeof coord.y !== "number" || !Number.isFinite(coord.x) || !Number.isFinite(coord.y)) {
+    return undefined;
+  }
+  return {
+    x: Math.floor(coord.x),
+    y: Math.floor(coord.y),
   };
 }
 
 function normalizeCombatActor(actor: CombatActor): CombatActor {
+  const stats = normalizeStats(actor, { dodgeRate: getDefaultDodge(actor.kind) });
   return {
     ...actor,
-    ...normalizeStats(actor, { dodgeRate: getDefaultDodge(actor.kind) }),
+    ...stats,
+    baseStats: actor.baseStats ? normalizeStats(actor.baseStats, { dodgeRate: getDefaultDodge(actor.kind) }) : stats,
+    combatAffixes: Array.isArray(actor.combatAffixes) ? actor.combatAffixes : Array.isArray(actor.equipmentAffixes) ? actor.equipmentAffixes : [],
+    equipmentAffixes: Array.isArray(actor.equipmentAffixes) ? actor.equipmentAffixes : Array.isArray(actor.combatAffixes) ? actor.combatAffixes : [],
+    equipmentSeals: Array.isArray(actor.equipmentSeals)
+      ? actor.equipmentSeals.map((seal) => ({
+          ...seal,
+          remainingRounds: normalizeNonNegativeInt(seal.remainingRounds, 0),
+        }))
+      : [],
+    basicAttackDisabledActions: normalizeNonNegativeInt(actor.basicAttackDisabledActions, 0),
+    skillDisabledActions: normalizeNonNegativeInt(actor.skillDisabledActions, 0),
+    artifactDisabledActions: normalizeNonNegativeInt(actor.artifactDisabledActions, 0),
+    pillDisabledActions: normalizeNonNegativeInt(actor.pillDisabledActions, 0),
+    reviveDisabledActions: normalizeNonNegativeInt(actor.reviveDisabledActions, 0),
+    shield: normalizeNonNegativeInt(actor.shield, 0),
+    burnTurns: normalizeNonNegativeInt(actor.burnTurns, 0),
+    burnDamage: normalizeNonNegativeInt(actor.burnDamage, 0),
+    poisonTurns: normalizeNonNegativeInt(actor.poisonTurns, 0),
+    poisonDamage: normalizeNonNegativeInt(actor.poisonDamage, 0),
+    speedUpTurns: normalizeNonNegativeInt(actor.speedUpTurns, 0),
+    speedUpAmount: normalizeNonNegativeInt(actor.speedUpAmount, 0),
+    dodgeUpTurns: normalizeNonNegativeInt(actor.dodgeUpTurns, 0),
+    dodgeUpAmount: normalizeNonNegativeInt(actor.dodgeUpAmount, 0),
+    soulLockedTurns: normalizeNonNegativeInt(actor.soulLockedTurns, 0),
   };
+}
+
+function normalizeNonNegativeInt(value: unknown, fallback: number, min = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.floor(value)) : fallback;
 }

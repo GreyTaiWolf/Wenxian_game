@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import {
   WORLD_GRID_MAP_ID,
   getDefaultGridCoord,
@@ -7,9 +7,8 @@ import {
   getLocalSceneGridCoord,
   getLocationIdFromLocalGridMapId,
   getWorldPoiGridCoord,
-  gridMaps,
 } from "../data/gridMaps";
-import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZones, gridDestinationZones } from "../data/gridMapZones";
+import { findGridDestinationZone, getGridDestinationZone } from "../data/gridMapZones";
 import { COMBAT_ACTION_HOURS, GATHER_ACTION_HOURS, TREASURE_ACTION_HOURS } from "../data/time";
 import { formatItemName, getItem, itemGradeLabels, itemTierLabels, shouldEmphasizeItemGrade } from "../data/items";
 import { getEquipmentWorkshop, getEquipmentWorkshopByNpcId, getEquipmentWorkshopBySceneId, type EquipmentWorkshopConfig } from "../data/equipmentWorkshops";
@@ -25,7 +24,7 @@ import {
 } from "../data/npcs";
 import {
   getLocation,
-  getRegion,
+  getLocationEntryScene,
   getScene,
   getShopConfig,
   tasks,
@@ -48,7 +47,6 @@ import {
   getPathMovementSteps,
   gridCoordKey,
   isSameGridCoord,
-  runGridNavigationSelfTest,
   worldPositionToGridCoord,
 } from "../game/gridNavigation";
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
@@ -83,7 +81,6 @@ const GRID_MAP_MAX_SCALE = 12;
 const GRID_MAP_VISIBLE_PADDING = 4;
 const GRID_MAP_EDGE_PADDING = 28;
 const GRID_MAP_WHEEL_ZOOM_FACTOR = 1.18;
-const GRID_MAP_BUTTON_ZOOM_FACTOR = 1.32;
 const SHOP_MOBILE_PAGE_SIZE = 8;
 const SHOP_WIDE_PAGE_SIZE = 9;
 const SHOP_WIDE_MEDIA_QUERY = "(min-width: 640px)";
@@ -112,14 +109,10 @@ export default function ExplorePanel() {
   const view = useMapUiStore((state) => state.view);
   const selectedWorldPoiId = useMapUiStore((state) => state.selectedWorldPoiId);
   const activeSceneHotspotId = useMapUiStore((state) => state.activeSceneHotspotId);
-  const debugOpen = useMapUiStore((state) => state.debugOpen);
-  const debugResult = useMapUiStore((state) => state.debugResult);
   const travel = useMapUiStore((state) => state.travel);
   const setView = useMapUiStore((state) => state.setView);
   const setSelectedWorldPoiId = useMapUiStore((state) => state.setSelectedWorldPoiId);
   const setActiveSceneHotspotId = useMapUiStore((state) => state.setActiveSceneHotspotId);
-  const toggleDebug = useMapUiStore((state) => state.toggleDebug);
-  const setDebugResult = useMapUiStore((state) => state.setDebugResult);
   const setTravel = useMapUiStore((state) => state.setTravel);
   const [activeShopId, setActiveShopId] = useState<string | null>(null);
   const [npcRosterOpen, setNpcRosterOpen] = useState(false);
@@ -134,12 +127,11 @@ export default function ExplorePanel() {
   }
 
   const game = activeGame;
-  const region = getRegion(game.world.regionId);
   const location = getLocation(game.world.regionId, game.world.locationId);
   const scene = getScene(game.world.regionId, game.world.locationId, game.world.sceneId);
   const activeSceneHotspot = scene.hotspots?.find((hotspot) => hotspot.id === activeSceneHotspotId) ?? null;
   const selectedWorldPoi = selectedWorldPoiId ? getWorldPoi(selectedWorldPoiId) ?? null : null;
-  const currentWorldPoi = getWorldPoiByLocationId(game.world.locationId);
+  const currentWorldPoi = getWorldPoiByLocationId(game.world.locationId) ?? null;
   const activeNpc = getNpc(activeNpcId);
   const activeSceneDetail = activeSceneDetailId ? location.scenes.find((item) => item.id === activeSceneDetailId) ?? null : null;
   const activeSceneNpcs = activeSceneDetail ? getSceneNpcs(location, activeSceneDetail, game.world.npcs) : [];
@@ -186,13 +178,6 @@ export default function ExplorePanel() {
     return () => window.clearTimeout(timer);
   }, [travel, onChange]);
 
-  function runSelfTest() {
-    const result = runGridNavigationSelfTest(gridMaps, gridDestinationZones);
-    const details = result.checks.map((check) => `${check.ok ? "通过" : "失败"}：${check.name}`).join("；");
-    setDebugResult(`${result.summary}。${details}`);
-    onChange((currentGame) => appendLog(currentGame, result.ok ? "网格导航自检通过。" : "网格导航自检发现异常，请查看调试信息。"));
-  }
-
   function startTravel(mapId: string, rawTarget: GridCoord, intent: TravelIntent) {
     const map = getGridMapData(mapId);
     if (!map) {
@@ -214,7 +199,6 @@ export default function ExplorePanel() {
 
     const steps = getPathMovementSteps(path);
     setTravel({ mapId, target, path: steps, intent, adjusted: !isSameGridCoord(rawTarget, target) });
-    setDebugResult(null);
     onChange((currentGame) => {
       const mountLabel = getActiveMountLabel(currentGame);
       const message = `${getTravelStartMessage(intent, target, !isSameGridCoord(rawTarget, target))}${mountLabel ? ` ${mountLabel}随行，脚程更快。` : ""}`;
@@ -561,51 +545,48 @@ export default function ExplorePanel() {
   const worldMapData = getGridMapData(WORLD_GRID_MAP_ID);
   const localMapId = getLocalGridMapId(game.world.locationId);
   const localMapData = localMapId ? getGridMapData(localMapId) : undefined;
+  const localNpcCount = getNpcsForLocation(location.id, game.world.npcs).length;
+  const localPeopleLabel = getLocalPeopleLabel(location.type);
 
   return (
     <section className="module-panel explore-panel">
       {view === "world" && worldMapData ? (
-        <GridMapPanel
-          mode="world"
-          mapData={worldMapData}
-          game={game}
-          travel={travel}
-          debugOpen={debugOpen}
-          debugResult={debugResult}
-          selectedWorldPoi={selectedWorldPoi}
-          onToggleDebug={toggleDebug}
-          onRunSelfTest={runSelfTest}
-          onMapTarget={(coord) => {
-            setSelectedWorldPoiId(null);
-            startTravel(WORLD_GRID_MAP_ID, coord, { kind: "free" });
-          }}
-          onSelectWorldPoi={travelToWorldPoi}
-          onCloseWorldPoi={() => setSelectedWorldPoiId(null)}
-          onEnterWorldPoi={enterWorldPoi}
-        />
+        <>
+          <ExploreMapHeader iconName="module-explore" subtitle={getWorldMapHeaderSubtitle(travel, currentWorldPoi)} title="问仙大世界" />
+          <GridMapPanel
+            mode="world"
+            mapData={worldMapData}
+            game={game}
+            travel={travel}
+            selectedWorldPoi={selectedWorldPoi}
+            onMapTarget={(coord) => {
+              setSelectedWorldPoiId(null);
+              startTravel(WORLD_GRID_MAP_ID, coord, { kind: "free" });
+            }}
+            onSelectWorldPoi={travelToWorldPoi}
+            onCloseWorldPoi={() => setSelectedWorldPoiId(null)}
+            onEnterWorldPoi={enterWorldPoi}
+          />
+        </>
       ) : (
         <>
-          <div className="location-header">
-            <button
-              className="ghost-button"
-              onClick={() => {
-                setSelectedWorldPoiId(currentWorldPoi?.id ?? null);
-                setView("world");
-              }}
-            >
-              <GameIcon name="action-back" size={15} />
-              返回大世界
-            </button>
-            <div>
-              <h2>
-                <GameIcon name={getLocationIconName(location.type)} size={18} />
-                {location.name}
-              </h2>
-              <span>
-                内部地图 / {currentWorldPoi?.regionTag ?? region.name} / {getLocationTypeLabel(location.type)}
-              </span>
-            </div>
-          </div>
+          <ExploreMapHeader
+            action={
+              <button className="town-npc-button" onClick={() => setNpcRosterOpen(true)} type="button">
+                <GameIcon name="team" size={16} />
+                {localPeopleLabel}
+                <small>{localNpcCount}</small>
+              </button>
+            }
+            backLabel="返回大世界"
+            iconName={getLocationIconName(location.type)}
+            onBack={() => {
+              setSelectedWorldPoiId(currentWorldPoi?.id ?? null);
+              setView("world");
+            }}
+            subtitle={getLocalMapHeaderSubtitle(travel, localMapId, location, scene)}
+            title={location.name}
+          />
 
           {localMapData ? (
             <GridMapPanel
@@ -613,16 +594,11 @@ export default function ExplorePanel() {
               mapData={localMapData}
               game={game}
               travel={travel}
-              debugOpen={debugOpen}
-              debugResult={debugResult}
               location={location}
               currentScene={scene}
-              onToggleDebug={toggleDebug}
-              onRunSelfTest={runSelfTest}
               onMapTarget={(coord) => {
                 startTravel(localMapData.mapId, coord, { kind: "free" });
               }}
-              onOpenNpcRoster={() => setNpcRosterOpen(true)}
               onSelectNpc={travelToNpc}
               onSelectScene={(sceneId) => travelToLocalScene(sceneId, true)}
             />
@@ -1242,18 +1218,13 @@ function GridMapPanel({
   mapData,
   game,
   travel,
-  debugOpen,
-  debugResult,
   selectedWorldPoi,
   location,
   currentScene,
-  onToggleDebug,
-  onRunSelfTest,
   onMapTarget,
   onSelectWorldPoi,
   onCloseWorldPoi,
   onEnterWorldPoi,
-  onOpenNpcRoster,
   onSelectNpc,
   onSelectScene,
 }: {
@@ -1261,18 +1232,13 @@ function GridMapPanel({
   mapData: GridMapData;
   game: GameState;
   travel: ActiveTravel | null;
-  debugOpen: boolean;
-  debugResult: string | null;
   selectedWorldPoi?: WorldPoiConfig | null;
   location?: LocationNode;
   currentScene?: SceneNode;
-  onToggleDebug: () => void;
-  onRunSelfTest: () => void;
   onMapTarget: (coord: GridCoord) => void;
   onSelectWorldPoi?: (poi: WorldPoiConfig) => void;
   onCloseWorldPoi?: () => void;
   onEnterWorldPoi?: (poi: WorldPoiConfig) => void;
-  onOpenNpcRoster?: () => void;
   onSelectNpc?: (npcId: string) => void;
   onSelectScene?: (sceneId: string) => void;
 }) {
@@ -1283,6 +1249,8 @@ function GridMapPanel({
   const [isMapInteracting, setIsMapInteracting] = useState(false);
   const [viewportSize, setViewportSize] = useState<GridViewportSize>({ width: 0, height: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStartRef = useRef<{ distance: number; centerX: number; centerY: number; viewport: MapViewportState } | null>(null);
   const viewportSizeRef = useRef<GridViewportSize>({ width: 0, height: 0 });
   const pendingViewportFrameRef = useRef<number | null>(null);
   const pendingViewportRef = useRef<MapViewportState | null>(null);
@@ -1291,29 +1259,10 @@ function GridMapPanel({
   const scale = viewport.scale;
   const offset = viewport.offset;
   const currentCoord = getNavigationCoord(game, mapData.mapId);
-  const targetCoord = travel?.mapId === mapData.mapId ? travel.target : null;
   const visiblePath = travel?.mapId === mapData.mapId ? [currentCoord, ...travel.path] : [];
-  const zones = useMemo(() => getGridDestinationZones(mapData.mapId), [mapData.mapId]);
-  const hitZone = (targetCoord ? findGridDestinationZone(mapData.mapId, targetCoord) : null) ?? findGridDestinationZone(mapData.mapId, currentCoord);
-  const hitZoneLabel = hitZone ? getDestinationZoneLabel(hitZone, game.world.regionId, game.world.locationId) : null;
   const visibleRect = useMemo(() => getVisibleGridRectFromViewport(mapData, viewportSize, scale, offset), [mapData, viewportSize, scale, offset.x, offset.y]);
-  const visibleCells = useMemo(() => getCellsInRect(mapData, visibleRect), [mapData, visibleRect]);
   const zoomTier = getZoomTier(scale);
-  const pathKeys = useMemo(() => new Set(visiblePath.map(gridCoordKey)), [visiblePath]);
-  const detailedCells = debugOpen ? visibleCells : [];
   const markers = mode === "world" ? getVisibleWorldPoiMarkers(scale) : getLocalMapMarkers(location, currentScene, game.world.npcs);
-  const isTownLocalMap = mode === "local" && (location?.type === "city" || location?.type === "town");
-  const townNpcCount = isTownLocalMap && location ? getNpcsForLocation(location.id, game.world.npcs).length : 0;
-  const travelLabel = getTravelLabel(travel, mapData.mapId, location);
-  const subtitle =
-    travelLabel ??
-    (mode === "world"
-      ? selectedWorldPoi
-        ? `已抵达：${selectedWorldPoi.name}`
-        : `缩放 ${scale.toFixed(2)}x / ${getWorldZoomHint(scale)}`
-      : currentScene
-        ? `当前：${currentScene.name}`
-        : `${location?.name ?? mapData.name}内部地图`);
 
   useEffect(() => {
     const viewportElement = viewportRef.current;
@@ -1408,14 +1357,6 @@ function GridMapPanel({
     );
   }
 
-  function zoom(factor: number) {
-    zoomAtViewportPoint(0, 0, factor, true);
-  }
-
-  function resetMap() {
-    scheduleViewport(getDefaultViewportForMap(mapData), true);
-  }
-
   function startWheelInteraction() {
     setIsMapInteracting(true);
     if (wheelIdleTimerRef.current !== null) {
@@ -1427,19 +1368,97 @@ function GridMapPanel({
     }, 120);
   }
 
+  function getPinchMetrics(element: HTMLDivElement) {
+    const points = Array.from(activePointersRef.current.values()).slice(0, 2);
+    if (points.length < 2) {
+      return null;
+    }
+    const [first, second] = points;
+    const viewportRect = element.getBoundingClientRect();
+    return {
+      centerX: (first.x + second.x) / 2 - viewportRect.left - viewportRect.width / 2,
+      centerY: (first.y + second.y) / 2 - viewportRect.top - viewportRect.height / 2,
+      distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+    };
+  }
+
+  function startPinchGesture(element: HTMLDivElement) {
+    const metrics = getPinchMetrics(element);
+    if (!metrics) {
+      return;
+    }
+    pinchStartRef.current = {
+      ...metrics,
+      viewport: pendingViewportRef.current ?? viewport,
+    };
+    setDragStart(null);
+    setDidDrag(true);
+    setIsMapInteracting(true);
+  }
+
+  function updatePinchGesture(element: HTMLDivElement) {
+    if (activePointersRef.current.size < 2) {
+      return false;
+    }
+    if (!pinchStartRef.current) {
+      startPinchGesture(element);
+    }
+    const start = pinchStartRef.current;
+    const metrics = getPinchMetrics(element);
+    if (!start || !metrics) {
+      return false;
+    }
+    const nextScale = clampScale(start.viewport.scale * (metrics.distance / start.distance));
+    const contentX = (start.centerX - start.viewport.offset.x) / start.viewport.scale;
+    const contentY = (start.centerY - start.viewport.offset.y) / start.viewport.scale;
+    scheduleViewport({
+      scale: nextScale,
+      offset: {
+        x: metrics.centerX - contentX * nextScale,
+        y: metrics.centerY - contentY * nextScale,
+      },
+    });
+    setDidDrag(true);
+    return true;
+  }
+
   function stopMapGesture(event: PointerEvent<HTMLElement>) {
     event.stopPropagation();
     setDragStart(null);
+    activePointersRef.current.delete(event.pointerId);
+    pinchStartRef.current = null;
     setIsMapInteracting(false);
   }
 
   function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (dragStart && dragStart.pointerId === event.pointerId && !didDrag && !isInteractiveMapTarget(event.target)) {
+    const hadPinch = Boolean(pinchStartRef.current) || activePointersRef.current.size >= 2;
+    activePointersRef.current.delete(event.pointerId);
+    if (activePointersRef.current.size < 2) {
+      pinchStartRef.current = null;
+    }
+
+    if (!hadPinch && dragStart && dragStart.pointerId === event.pointerId && !didDrag && !isInteractiveMapTarget(event.target)) {
       const coord = getGridCoordFromPointer(event, mapData);
       if (coord) {
         onMapTarget(coord);
       }
     }
+
+    if (activePointersRef.current.size === 1) {
+      const [remainingPointerId, remainingPoint] = Array.from(activePointersRef.current.entries())[0];
+      const current = pendingViewportRef.current ?? viewport;
+      setDragStart({
+        pointerId: remainingPointerId,
+        x: remainingPoint.x,
+        y: remainingPoint.y,
+        originX: current.offset.x,
+        originY: current.offset.y,
+      });
+      setDidDrag(true);
+      setIsMapInteracting(true);
+      return;
+    }
+
     setDragStart(null);
     setDidDrag(false);
     setIsMapInteracting(false);
@@ -1447,20 +1466,6 @@ function GridMapPanel({
 
   return (
     <div className={`grid-map-panel ${mode === "world" ? "world-grid-map-panel" : "local-grid-map-panel"}`}>
-      <MapHeader
-        title={mode === "world" ? "问仙大世界" : "内部地图"}
-        subtitle={subtitle}
-        debugOpen={debugOpen}
-        hideTitleBlock={isTownLocalMap}
-        onZoomIn={() => zoom(GRID_MAP_BUTTON_ZOOM_FACTOR)}
-        onZoomOut={() => zoom(1 / GRID_MAP_BUTTON_ZOOM_FACTOR)}
-        onReset={resetMap}
-        onToggleDebug={onToggleDebug}
-        onRunSelfTest={onRunSelfTest}
-        onOpenNpcRoster={isTownLocalMap ? onOpenNpcRoster : undefined}
-        townNpcCount={townNpcCount}
-      />
-
       <div
         ref={viewportRef}
         className={`world-map-viewport grid-map-viewport ${mode === "world" ? "world-grid-map-viewport" : "local-grid-map-viewport"} zoom-${zoomTier} ${
@@ -1480,15 +1485,29 @@ function GridMapPanel({
           if (isInteractiveMapTarget(event.target)) {
             return;
           }
+          event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
+          activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
           setIsMapInteracting(true);
           setDidDrag(false);
+          if (activePointersRef.current.size >= 2) {
+            startPinchGesture(event.currentTarget);
+            return;
+          }
           setDragStart({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: offset.x, originY: offset.y });
         }}
         onPointerMove={(event) => {
+          if (activePointersRef.current.has(event.pointerId)) {
+            activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          }
+          if (updatePinchGesture(event.currentTarget)) {
+            event.preventDefault();
+            return;
+          }
           if (!dragStart || dragStart.pointerId !== event.pointerId) {
             return;
           }
+          event.preventDefault();
           const deltaX = event.clientX - dragStart.x;
           const deltaY = event.clientY - dragStart.y;
           if (Math.abs(deltaX) + Math.abs(deltaY) > 5) {
@@ -1500,10 +1519,14 @@ function GridMapPanel({
           });
         }}
         onPointerUp={handlePointerUp}
-        onPointerCancel={() => {
+        onPointerCancel={(event) => {
+          activePointersRef.current.delete(event.pointerId);
+          if (activePointersRef.current.size < 2) {
+            pinchStartRef.current = null;
+          }
           setDragStart(null);
           setDidDrag(false);
-          setIsMapInteracting(false);
+          setIsMapInteracting(activePointersRef.current.size > 0);
         }}
       >
         <div
@@ -1515,15 +1538,6 @@ function GridMapPanel({
         >
           <GridAtmosphereOverlay mode={mode} />
           {mapData.roadSegments.length > 0 ? <GridRoadOverlay mapData={mapData} visibleRect={visibleRect} /> : null}
-          {detailedCells.map((cell) => (
-            <GridTerrainCell
-              cell={cell}
-              className={`${pathKeys.has(gridCoordKey(cell)) ? "route" : ""}`}
-              key={`terrain-${cell.x}-${cell.y}`}
-              mapData={mapData}
-            />
-          ))}
-          {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} visibleCells={visibleCells} /> : null}
           {visiblePath.length > 0 ? <GridRouteOverlay mapData={mapData} path={visiblePath} /> : null}
         </div>
 
@@ -1560,7 +1574,6 @@ function GridMapPanel({
           {mode === "world" ? <WorldRegionLabels scale={scale} mapData={mapData} viewportSize={viewportSize} offset={offset} /> : null}
         </div>
 
-        {debugOpen ? <GridDebugReadout current={currentCoord} target={targetCoord} path={visiblePath} hitZoneLabel={hitZoneLabel} result={debugResult} /> : null}
         {mode === "world" && selectedWorldPoi ? (
           <WorldPoiDrawer poi={selectedWorldPoi} onClose={onCloseWorldPoi} onEnter={onEnterWorldPoi} />
         ) : null}
@@ -1569,70 +1582,51 @@ function GridMapPanel({
   );
 }
 
-function MapHeader({
-  title,
+function ExploreMapHeader({
+  action,
+  backLabel,
+  iconName,
+  onBack,
   subtitle,
-  debugOpen,
-  hideTitleBlock = false,
-  townNpcCount,
-  onOpenNpcRoster,
-  onZoomIn,
-  onZoomOut,
-  onReset,
-  onToggleDebug,
-  onRunSelfTest,
+  title,
 }: {
-  title: string;
+  action?: ReactNode;
+  backLabel?: string;
+  iconName: GameIconName;
+  onBack?: () => void;
   subtitle: string;
-  debugOpen: boolean;
-  hideTitleBlock?: boolean;
-  townNpcCount?: number;
-  onOpenNpcRoster?: () => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onReset: () => void;
-  onToggleDebug: () => void;
-  onRunSelfTest: () => void;
+  title: string;
 }) {
   return (
-    <div className={`world-map-header ${hideTitleBlock ? "titleless" : ""}`}>
-      {!hideTitleBlock ? (
-      <div>
+    <div className={`location-header map-hud-header ${onBack ? "has-back" : ""} ${action ? "has-action" : ""}`.trim()}>
+      {onBack ? (
+        <button className="ghost-button" onClick={onBack} type="button">
+          <GameIcon name="action-back" size={15} />
+          {backLabel ?? "返回"}
+        </button>
+      ) : null}
+      <div className="map-hud-main">
         <h2>
-          <GameIcon name="module-explore" size={18} />
+          <GameIcon name={iconName} size={18} />
           {title}
         </h2>
         <span>{subtitle}</span>
       </div>
-      ) : null}
-      {onOpenNpcRoster ? (
-        <div className="map-controls town-map-controls" onPointerDown={(event) => event.stopPropagation()}>
-          <button className="town-npc-button" onClick={onOpenNpcRoster}>
-            <GameIcon name="team" size={16} />
-            城镇人物
-            {typeof townNpcCount === "number" ? <small>{townNpcCount}</small> : null}
-          </button>
-        </div>
-      ) : (
-        <div className="map-controls" onPointerDown={(event) => event.stopPropagation()}>
-          <button onClick={onZoomIn} aria-label="放大地图">
-            <GameIcon name="action-zoom-in" size={16} />
-          </button>
-          <button onClick={onZoomOut} aria-label="缩小地图">
-            <GameIcon name="action-zoom-out" size={16} />
-          </button>
-          <button onClick={onReset}>
-            <GameIcon name="action-reset" size={16} />
-            重置
-          </button>
-          <button className={debugOpen ? "active" : ""} onClick={onToggleDebug}>
-            网格
-          </button>
-          <button onClick={onRunSelfTest}>自检</button>
-        </div>
-      )}
+      {action ? <div className="map-hud-action">{action}</div> : null}
     </div>
   );
+}
+
+function getWorldMapHeaderSubtitle(travel: ActiveTravel | null, currentWorldPoi: WorldPoiConfig | null): string {
+  return getTravelLabel(travel, WORLD_GRID_MAP_ID) ?? (currentWorldPoi ? `已抵达：${currentWorldPoi.name}` : "点击地图探索");
+}
+
+function getLocalMapHeaderSubtitle(travel: ActiveTravel | null, mapId: string | null | undefined, location: LocationNode, currentScene: SceneNode): string {
+  return (mapId ? getTravelLabel(travel, mapId, location) : null) ?? `当前：${currentScene.name}`;
+}
+
+function getLocalPeopleLabel(locationType: LocationNode["type"]): string {
+  return locationType === "city" || locationType === "town" ? "城镇人物" : "此地人物";
 }
 
 type GridMapMarker =
@@ -2223,6 +2217,7 @@ function applyWorldPoiEnterChange(game: GameState, poi: WorldPoiConfig): GameSta
   const nextLocation = getLocation(poi.regionId, poi.locationId);
   const nextMapId = poi.enterMapId ?? getLocalGridMapId(poi.locationId);
   const nextCoord = nextMapId ? getDefaultGridCoord(nextMapId) : null;
+  const entryScene = getLocationEntryScene(nextLocation);
 
   return {
     ...game,
@@ -2230,7 +2225,7 @@ function applyWorldPoiEnterChange(game: GameState, poi: WorldPoiConfig): GameSta
       ...game.world,
       regionId: poi.regionId,
       locationId: nextLocation.id,
-      sceneId: nextLocation.scenes[0].id,
+      sceneId: entryScene.id,
       lastTownId: nextLocation.type === "city" || nextLocation.type === "town" ? nextLocation.id : game.world.lastTownId,
       sceneMessage: `进入${poi.name}内部地图。`,
       navigation: {
@@ -2244,12 +2239,13 @@ function applyWorldPoiEnterChange(game: GameState, poi: WorldPoiConfig): GameSta
 
 function applyLocationChange(game: GameState, locationId: string): GameState {
   const nextLocation = getLocation(game.world.regionId, locationId);
+  const entryScene = getLocationEntryScene(nextLocation);
   return {
     ...game,
     world: {
       ...game.world,
       locationId,
-      sceneId: nextLocation.scenes[0].id,
+      sceneId: entryScene.id,
       lastTownId: nextLocation.type === "city" || nextLocation.type === "town" ? nextLocation.id : game.world.lastTownId,
       sceneMessage: `抵达 ${nextLocation.name}。`,
     },
@@ -2576,7 +2572,7 @@ function NpcRosterDialog({
       onOpenChange={onOpenChange}
       open={open}
       subtitle={`${location.name} · ${total} 人`}
-      title="城镇人物"
+      title={getLocalPeopleLabel(location.type)}
     >
       <div className="npc-roster-groups">
         {groups.map((group) => (

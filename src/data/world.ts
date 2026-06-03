@@ -1,4 +1,4 @@
-import type { Cost, ItemAmount } from "../types";
+import type { Cost, GridCoord, GridRoadKind, ItemAmount } from "../types";
 
 export type SceneActionKind =
   | "dialogue"
@@ -59,6 +59,12 @@ export interface LocationSceneBlockedRect {
   height: number;
 }
 
+export interface LocalSceneLink {
+  fromSceneId: string;
+  toSceneId: string;
+  kind?: GridRoadKind;
+}
+
 export interface SceneNode {
   id: string;
   name: string;
@@ -82,6 +88,9 @@ export interface LocationNode {
   dropPool?: ItemAmount[];
   npcIds?: string[];
   taskIds?: string[];
+  entrySceneId?: string;
+  localSceneCoords?: Record<string, GridCoord>;
+  localSceneLinks?: LocalSceneLink[];
   sceneMapImageKey?: string;
   sceneMapHotspots?: LocationSceneHotspot[];
   sceneMapBlockedRects?: LocationSceneBlockedRect[];
@@ -611,9 +620,26 @@ export const regions: RegionNode[] = [
         ],
         npcIds: ["qingyun_innkeeper"],
         taskIds: ["hunt_black_wind"],
+        entrySceneId: "mountain_path",
+        localSceneCoords: {
+          mountain_path: { x: 28, y: 7 },
+          black_spirit_spring: { x: 20, y: 9 },
+          wolves: { x: 26, y: 14 },
+          cultivators: { x: 32, y: 12 },
+          mojin_cave: { x: 19, y: 17 },
+          black_wind_demon_stockade: { x: 34, y: 16 },
+        },
+        localSceneLinks: [
+          { fromSceneId: "mountain_path", toSceneId: "black_spirit_spring" },
+          { fromSceneId: "mountain_path", toSceneId: "wolves" },
+          { fromSceneId: "mountain_path", toSceneId: "cultivators" },
+          { fromSceneId: "black_spirit_spring", toSceneId: "mojin_cave" },
+          { fromSceneId: "wolves", toSceneId: "mojin_cave" },
+          { fromSceneId: "cultivators", toSceneId: "black_wind_demon_stockade" },
+        ],
         sceneMapImageKey: "black_wind_mountain",
         sceneMapHotspots: [
-          { id: "mountain_path_marker", label: "山道", sceneId: "mountain_path", x: 23.81, y: 63.04, title: "山路" },
+          { id: "mountain_path_marker", label: "山道", sceneId: "mountain_path", x: 71.25, y: 28.85, title: "山路" },
           { id: "black_spirit_spring_marker", label: "黑灵泉", sceneId: "black_spirit_spring", x: 48.81, y: 45.65, title: "灵泉" },
           { id: "wolf_den_marker", label: "山狼巢穴", sceneId: "wolves", x: 64.29, y: 65.22, title: "妖兽" },
           { id: "mojin_cave_marker", label: "墨金洞", sceneId: "mojin_cave", x: 79.76, y: 76.09, title: "洞窟" },
@@ -1303,4 +1329,8 @@ export function getLocation(regionId: string, locationId: string): LocationNode 
 export function getScene(regionId: string, locationId: string, sceneId: string): SceneNode {
   const location = getLocation(regionId, locationId);
   return location.scenes.find((scene) => scene.id === sceneId) ?? location.scenes[0];
+}
+
+export function getLocationEntryScene(location: LocationNode): SceneNode {
+  return location.scenes.find((scene) => scene.id === location.entrySceneId) ?? location.scenes[0];
 }

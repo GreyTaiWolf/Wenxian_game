@@ -147,9 +147,13 @@ export function getEquippedItem(game: GameState, slotId: EquipmentSlotId): ItemC
   return getEquipmentInstanceItem(getEquippedEquipmentInstance(game, slotId));
 }
 
-export function getEquipmentBonuses(game: GameState): { stats: EquipmentBonus; power: number } {
+export function getEquipmentBonuses(game: GameState, disabledSlots: EquipmentSlotId[] = []): { stats: EquipmentBonus; power: number } {
+  const disabledSlotSet = new Set(disabledSlots);
   return equipmentSlots.reduce(
     (total, slot) => {
+      if (disabledSlotSet.has(slot.id)) {
+        return total;
+      }
       const instance = getEquippedEquipmentInstance(game, slot.id);
       if (!instance) {
         return total;
@@ -166,8 +170,12 @@ export function getEquipmentBonuses(game: GameState): { stats: EquipmentBonus; p
   );
 }
 
-export function getActiveEquipmentAffixes(game: GameState): ItemAffix[] {
+export function getActiveEquipmentAffixes(game: GameState, disabledSlots: EquipmentSlotId[] = []): ItemAffix[] {
+  const disabledSlotSet = new Set(disabledSlots);
   return equipmentSlots.flatMap((slot) => {
+    if (disabledSlotSet.has(slot.id)) {
+      return [];
+    }
     const instance = getEquippedEquipmentInstance(game, slot.id);
     if (!instance) {
       return [];
@@ -180,9 +188,9 @@ export function getActiveEquipmentAffixes(game: GameState): ItemAffix[] {
   });
 }
 
-export function getEffectiveStats(game: GameState): Stats {
-  const bonuses = getEquipmentBonuses(game).stats;
-  const affixes = getActiveEquipmentAffixes(game);
+export function getEffectiveStats(game: GameState, disabledSlots: EquipmentSlotId[] = []): Stats {
+  const bonuses = getEquipmentBonuses(game, disabledSlots).stats;
+  const affixes = getActiveEquipmentAffixes(game, disabledSlots);
   const percentBonus = (stat: NonNullable<ItemAffix["stat"]>) =>
     affixes.reduce((sum, affix) => sum + (affix.stat === stat && typeof affix.value === "number" ? affix.value : 0), 0);
   const withPercent = (value: number, stat: NonNullable<ItemAffix["stat"]>) => Math.max(0, value * (1 + percentBonus(stat)));

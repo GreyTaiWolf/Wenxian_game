@@ -16,15 +16,16 @@ import {
   normalizeMountYardState,
 } from "../data/caveFacilities";
 import { getEquipmentWorkshop } from "../data/equipmentWorkshops";
-import { formatItemName, getItem, itemGradeLabels, itemTierLabels, shouldEmphasizeItemGrade } from "../data/items";
+import { formatItemName, getItem, itemGradeLabels, itemGradeOrder, itemTierLabels, shouldEmphasizeItemGrade } from "../data/items";
 import { getRealm } from "../data/progression";
 import { CALENDAR_DAYS_PER_YEAR } from "../data/time";
 import {
   getNextSpiritFieldLevelConfig,
-  getSpiritFieldLevelConfig,
-  getSpiritFieldRegionConfig,
+  getNextSpiritFieldPlotGradeConfig,
+  getSpiritFieldPlotGradeConfig,
   getSpiritPlant,
-  spiritFieldRegionConfigs,
+  getSpiritPlantBySeed,
+  getSpiritPlantYearCap,
 } from "../data/spiritPlants";
 import { craftAlchemyRecipe, getAlchemySuccessRate, isAlchemyRecipeLearned, learnAlchemyRecipe, upgradeAlchemyFurnace } from "../game/alchemy";
 import { breakthroughPet, feedPet, formatPetFeedCost, getPetPowerMultiplier, setActivePet, upgradeBeastStable } from "../game/beastStable";
@@ -43,21 +44,24 @@ import {
   getAvailableSpiritSeeds,
   getPlantMaturityLabel,
   getSpiritFieldGrowthMultiplier,
+  getSpiritFieldPlotGrowthMultiplier,
   harvestSpiritPlant,
   plantSpiritSeed,
-  setActiveSpiritFieldRegion,
-  unlockSpiritFieldRegion,
   uprootSpiritPlant,
   upgradeSpiritField,
+  upgradeSpiritFieldPlot,
 } from "../game/spiritField";
 import { canAffordCost, describeCost } from "../game/state";
 import { advanceTime } from "../game/time";
 import { getActiveMountTravelReduction, getMountTrainCost, setActiveMount, trainMount, upgradeMountYard } from "../game/mounts";
-import type { CavePetInstance, Cost, EquipmentInstance, GameState, ItemConfig, MountInstance } from "../types";
+import type { CavePetInstance, Cost, EquipmentInstance, GameState, ItemConfig, ItemGrade, MountInstance } from "../types";
 import { GameIcon, type GameIconName } from "./GameIcon";
-import { GradeBadge } from "./ui";
+import { GameDialog, GradeBadge, ItemSlot } from "./ui";
 
 type CaveView = "home" | "meditation" | "field" | "alchemy" | "refinery" | "pets" | "mounts";
+const SELECTION_SLOT_COUNT = 6;
+const SPIRIT_SEED_BAG_SLOT_COUNT = 9;
+const HOME_SPIRIT_FIELD_REGION_ID = "home_cave";
 
 export default function CavePanel({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
   const [view, setView] = useState<CaveView>("home");
@@ -119,7 +123,8 @@ export default function CavePanel({ game, onChange }: { game: GameState; onChang
     );
   }
 
-  const activeRegions = Object.values(cave.spiritField.regions).filter((region) => region.unlocked).length;
+  const homeSpiritField = cave.spiritField.regions[HOME_SPIRIT_FIELD_REGION_ID] ?? Object.values(cave.spiritField.regions)[0];
+  const homeUnlockedPlots = homeSpiritField?.plots.filter((plot) => plot.unlocked).length ?? 0;
   const stable = normalizeBeastStableState(cave.beastStable, game.player.team);
   const mountYard = normalizeMountYardState(cave.mountYard);
   const activeMount = mountYard.mounts.find((mount) => mount.mountId === mountYard.activeMountId);
@@ -137,7 +142,7 @@ export default function CavePanel({ game, onChange }: { game: GameState; onChang
 
       <div className="feature-grid cave-overview-grid">
         <Feature icon="module-cultivation" label="闭关" value={preview.isActive ? `可领 +${preview.claimableCultivation}` : "未闭关"} />
-        <Feature icon="system-spirit-field" label="灵田" value={`${activeRegions}/${spiritFieldRegionConfigs.length} 区`} />
+        <Feature icon="system-spirit-field" label="灵田" value={`${homeUnlockedPlots}/9 格`} />
         <Feature icon="system-alchemy" label="丹炉" value={`${cave.alchemy.furnaceLevel} 级`} />
         <Feature icon="system-refinery" label="炼器室" value={`${cave.refinery.level} 级`} />
         <Feature icon="system-pet" label="灵宠" value={`${stable.pets.length} 只`} />
@@ -154,7 +159,7 @@ export default function CavePanel({ game, onChange }: { game: GameState; onChang
         <FacilityButton
           icon="system-spirit-field"
           label="灵田"
-          meta="分区九宫格种植、采收、开辟外田"
+          meta="本府九宫格种植、采收、年份养成"
           onClick={() => setView("field")}
         />
         <FacilityButton
@@ -268,98 +273,134 @@ function MeditationPage({ game, now, onChange }: { game: GameState; now: Date; o
 
 function SpiritFieldPage({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
   const field = game.cave.spiritField;
-  const [selectedRegionId, setSelectedRegionId] = useState(field.activeRegionId);
-  const selectedRegion = field.regions[selectedRegionId] ?? field.regions.home_cave;
-  const regionConfig = getSpiritFieldRegionConfig(selectedRegion.regionId);
-  const levelConfig = getSpiritFieldLevelConfig(selectedRegion.level);
-  const nextLevel = getNextSpiritFieldLevelConfig(selectedRegion.level);
+  const homeRegion = (field.regions[HOME_SPIRIT_FIELD_REGION_ID] ?? field.regions[field.activeRegionId] ?? Object.values(field.regions)[0])!;
+  const [selectedPlotId, setSelectedPlotId] = useState<string | null>(null);
+  const [dialogMode, setDialogMode] = useState<"plot_detail" | "seed_bag">("plot_detail");
+  const [seedPage, setSeedPage] = useState(0);
+  const nextLevel = getNextSpiritFieldLevelConfig(homeRegion.level);
   const availableSeeds = getAvailableSpiritSeeds(game);
-  const [selectedSeedItemId, setSelectedSeedItemId] = useState<string | null>(availableSeeds[0]?.itemId ?? null);
-  const growthMultiplier = getSpiritFieldGrowthMultiplier(game, selectedRegion.regionId);
+  const selectedPlot = homeRegion.plots.find((plot) => plot.id === selectedPlotId) ?? null;
+  const dialogOpen = Boolean(selectedPlot);
+  const baseGrowthMultiplier = getSpiritFieldGrowthMultiplier(game, HOME_SPIRIT_FIELD_REGION_ID);
+  const unlockedPlots = homeRegion.plots.filter((plot) => plot.unlocked);
+  const highestSoilGrade = getHighestSoilGrade(homeRegion.plots);
+  const highestSoilConfig = getSpiritFieldPlotGradeConfig(highestSoilGrade);
 
   useEffect(() => {
-    if (selectedSeedItemId && availableSeeds.some((seed) => seed.itemId === selectedSeedItemId)) {
-      return;
+    if (selectedPlotId && !homeRegion.plots.some((plot) => plot.id === selectedPlotId)) {
+      setSelectedPlotId(null);
     }
-    setSelectedSeedItemId(availableSeeds[0]?.itemId ?? null);
-  }, [availableSeeds, selectedSeedItemId]);
+  }, [homeRegion.plots, selectedPlotId]);
 
-  function selectRegion(regionId: string) {
-    setSelectedRegionId(regionId);
-    const region = field.regions[regionId];
-    if (region?.unlocked) {
-      onChange(setActiveSpiritFieldRegion(game, regionId));
-    }
+  function openPlot(plotId: string) {
+    setSelectedPlotId(plotId);
+    setDialogMode("plot_detail");
+    setSeedPage(0);
+  }
+
+  function closeDialog() {
+    setSelectedPlotId(null);
+    setDialogMode("plot_detail");
+    setSeedPage(0);
   }
 
   return (
     <>
-      <div className="cave-region-tabs" aria-label="灵田区域">
-        {spiritFieldRegionConfigs.map((config) => {
-          const region = field.regions[config.regionId];
-          return (
-            <button className={selectedRegionId === config.regionId ? "active" : ""} key={config.regionId} onClick={() => selectRegion(config.regionId)} type="button">
-              <GameIcon name="system-spirit-field" size={15} />
-              <span>{config.name}</span>
-              <small>{region?.unlocked ? `${region.level}级` : "未开辟"}</small>
-            </button>
-          );
-        })}
-      </div>
-
       <section className="cave-status-card spirit-field-card">
         <div className="section-heading">
           <h2>
             <GameIcon name="system-spirit-field" size={18} />
-            {regionConfig.name}
+            本府灵田
           </h2>
-          <span>{selectedRegion.unlocked ? `${selectedRegion.level} 级` : "未开辟"}</span>
+          <span>{homeRegion.level} 级</span>
         </div>
-        <p className="cave-hint">{regionConfig.description}</p>
-        <div className="cave-detail-grid">
-          <Metric label="年份倍率" value={`${growthMultiplier}x`} />
-          <Metric label="已开地块" value={`${selectedRegion.plots.filter((plot) => plot.unlocked).length}/9`} />
-          <Metric label="年份上限" value={formatPlantYears(levelConfig.maxPlantYears)} />
-          <Metric label="最高品级" value={itemGradeLabels[levelConfig.maxGrade]} />
+        <p className="cave-hint">洞府内的一片灵土，点击任意地块查看、种植、采收或拔除。</p>
+        <div className="cave-detail-grid spirit-field-summary-grid">
+          <Metric label="基础速度" value={`${formatRate(baseGrowthMultiplier)}x`} />
+          <Metric label="已开垦" value={`${unlockedPlots.length}/9`} />
+          <Metric label="最高灵土" value={itemGradeLabels[highestSoilGrade]} />
+          <Metric label="最高格速" value={`${formatRate(highestSoilConfig.growthMultiplier)}x`} />
         </div>
-        {!selectedRegion.unlocked ? (
-          <button className="gold-button cave-upgrade-button" disabled={!regionConfig.unlockCost || !canAffordCost(game, regionConfig.unlockCost)} onClick={() => onChange(unlockSpiritFieldRegion(game, selectedRegion.regionId))} type="button">
-            <GameIcon name="system-spirit-field" size={15} />
-            {regionConfig.unlockCost ? `开辟外田 · ${describeCost(regionConfig.unlockCost)}` : "暂不可开辟"}
+        <div className="spirit-field-actions">
+          <button className="ghost-button" onClick={() => onChange(advanceTime(game, CALENDAR_DAYS_PER_YEAR, "你在本府灵田照料一年，草木年份随灵气沉淀。"))} type="button">
+            <GameIcon name="resource-life" size={15} />
+            照料一年
           </button>
-        ) : (
-          <>
-            <div className="spirit-field-actions">
-              <button className="ghost-button" onClick={() => onChange(advanceTime(game, CALENDAR_DAYS_PER_YEAR, `你在${regionConfig.name}照料灵田一年，草木年份随灵气沉淀。`))} type="button">
-                <GameIcon name="resource-life" size={15} />
-                照料一年
+          <button className="gold-button cave-upgrade-button" disabled={!nextLevel} onClick={() => onChange(upgradeSpiritField(game, HOME_SPIRIT_FIELD_REGION_ID))} type="button">
+            <GameIcon name="system-spirit-field" size={15} />
+            {nextLevel ? `升级灵田 · ${describeCost(nextLevel.upgradeCost ?? {})}` : "灵田已满级"}
+          </button>
+        </div>
+        <div className="spirit-field-nine-grid">
+          {homeRegion.plots.map((plot) => {
+            const species = plot.plant ? getSpiritPlant(plot.plant.speciesId) : null;
+            const soilConfig = getSpiritFieldPlotGradeConfig(plot.soilGrade);
+            const soilClass = plot.unlocked ? ` grade-card grade-${soilConfig.grade}` : "";
+            return (
+              <button className={`spirit-field-cell${soilClass} ${plot.unlocked ? "" : "locked"} ${plot.plant ? "planted" : ""} ${selectedPlotId === plot.id ? "selected" : ""}`} key={plot.id} onClick={() => openPlot(plot.id)} type="button">
+                {plot.unlocked ? <GradeBadge compact className="spirit-soil-grade-badge" grade={soilConfig.grade} /> : null}
+                {plot.unlocked && species && plot.plant ? (
+                  <span className={`spirit-field-plant-badge grade-card grade-${species.grade}`}>
+                    <GameIcon name="system-spirit-field" size={18} />
+                    <strong className={getGradeNameClass(getItem(species.seedItemId))}>{species.name}</strong>
+                    <small>{formatPlantYears(plot.plant.years)}</small>
+                  </span>
+                ) : plot.unlocked ? (
+                  <>
+                    <GameIcon name="system-spirit-field" size={18} />
+                    <strong>空田</strong>
+                  </>
+                ) : (
+                  <>
+                    <GameIcon name="system-spirit-field" size={18} />
+                    <strong>未开垦</strong>
+                  </>
+                )}
               </button>
-              <button className="gold-button cave-upgrade-button" disabled={!nextLevel} onClick={() => onChange(upgradeSpiritField(game, selectedRegion.regionId))} type="button">
-                <GameIcon name="system-spirit-field" size={15} />
-                {nextLevel ? `升级灵田 · ${describeCost(nextLevel.upgradeCost ?? {})}` : "灵田已满级"}
-              </button>
-            </div>
-            <SeedPicker seeds={availableSeeds} selectedSeedItemId={selectedSeedItemId} onSelect={setSelectedSeedItemId} />
-            <div className="spirit-field-nine-grid">
-              {selectedRegion.plots.map((plot, index) => (
-                <article className={`spirit-field-cell ${plot.unlocked ? "" : "locked"} ${plot.plant ? "planted" : ""}`} key={plot.id}>
-                  <div className="spirit-field-plot-title">
-                    <strong>{index + 1}</strong>
-                    <span>{plot.unlocked ? (plot.plant ? "生长中" : "空田") : "未开垦"}</span>
-                  </div>
-                  {!plot.unlocked ? <p className="muted">升级后开垦</p> : null}
-                  {plot.unlocked && plot.plant ? <PlantedPlot game={game} plotId={plot.id} plant={plot.plant} regionId={selectedRegion.regionId} onChange={onChange} /> : null}
-                  {plot.unlocked && !plot.plant ? (
-                    <button className="ghost-button spirit-cell-action" disabled={!selectedSeedItemId} onClick={() => selectedSeedItemId && onChange(plantSpiritSeed(game, selectedRegion.regionId, plot.id, selectedSeedItemId))} type="button">
-                      {selectedSeedItemId ? `种植${formatItemName(selectedSeedItemId)}` : "暂无灵种"}
-                    </button>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          </>
-        )}
+            );
+          })}
+        </div>
       </section>
+      {selectedPlot ? (
+        <GameDialog
+          className="spirit-field-dialog"
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              closeDialog();
+            }
+          }}
+          subtitle={dialogMode === "seed_bag" ? "背包灵种" : "地块信息"}
+          title="灵田地块"
+        >
+          {dialogMode === "seed_bag" && selectedPlot.unlocked && !selectedPlot.plant ? (
+            <SpiritSeedBag
+              onBack={() => setDialogMode("plot_detail")}
+              onPageChange={setSeedPage}
+              onPlant={(seedItemId) => {
+                const nextGame = plantSpiritSeed(game, HOME_SPIRIT_FIELD_REGION_ID, selectedPlot.id, seedItemId);
+                closeDialog();
+                onChange(nextGame);
+              }}
+              page={seedPage}
+              seeds={availableSeeds}
+            />
+          ) : (
+            <SpiritPlotDetail
+              game={game}
+              onChange={(nextGame) => {
+                closeDialog();
+                onChange(nextGame);
+              }}
+              onPlantRequest={() => {
+                setDialogMode("seed_bag");
+                setSeedPage(0);
+              }}
+              plot={selectedPlot}
+            />
+          )}
+        </GameDialog>
+      ) : null}
     </>
   );
 }
@@ -367,12 +408,16 @@ function SpiritFieldPage({ game, onChange }: { game: GameState; onChange: (game:
 function AlchemyPage({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
   const alchemy = game.cave.alchemy;
   const [selectedRecipeId, setSelectedRecipeId] = useState(alchemyRecipes[0]?.id ?? "");
+  const [recipePage, setRecipePage] = useState(0);
   const selectedRecipe = alchemyRecipes.find((recipe) => recipe.id === selectedRecipeId) ?? alchemyRecipes[0];
   const furnace = getAlchemyFurnaceLevel(alchemy.furnaceLevel);
   const nextFurnace = getNextAlchemyFurnaceLevel(alchemy.furnaceLevel);
   const learned = selectedRecipe ? isAlchemyRecipeLearned(alchemy, selectedRecipe.id) : false;
   const recipeCount = selectedRecipe ? game.inventory.items[selectedRecipe.recipeItemId] ?? 0 : 0;
   const canCraft = Boolean(selectedRecipe && learned && furnace.level >= selectedRecipe.requiredFurnaceLevel && canAffordCost(game, selectedRecipe.cost));
+  const recipePageCount = getSelectionPageCount(alchemyRecipes.length);
+  const visibleRecipePage = clampSelectionPage(recipePage, alchemyRecipes.length);
+  const recipeSlots = getSelectionSlots(alchemyRecipes, visibleRecipePage);
 
   return (
     <>
@@ -397,17 +442,24 @@ function AlchemyPage({ game, onChange }: { game: GameState; onChange: (game: Gam
       </section>
 
       <section className="cave-status-card">
-        <div className="workbench-recipe-tabs" aria-label="炼丹丹方">
-          {alchemyRecipes.map((recipe) => (
-            <button className={recipe.id === selectedRecipe?.id ? "active" : ""} key={recipe.id} onClick={() => setSelectedRecipeId(recipe.id)} type="button">
-              <GameIcon name="system-alchemy" size={16} />
-              <span>
-                <strong>{formatItemName(recipe.resultItemId)}</strong>
-                <small>{alchemy.learnedRecipes[recipe.id] ? "已掌握" : "需研读丹方"}</small>
-              </span>
-            </button>
-          ))}
+        <SelectionHeader meta={`${alchemyRecipes.length} 张丹方`} title="丹方槽" />
+        <div className="cave-slot-grid" aria-label="炼丹丹方">
+          {recipeSlots.map((recipe, index) =>
+            recipe ? (
+              <button className={`cave-selection-slot grade-card grade-${getItem(recipe.resultItemId).grade}${recipe.id === selectedRecipe?.id ? " active" : ""}`} key={recipe.id} onClick={() => setSelectedRecipeId(recipe.id)} type="button">
+                <span className="selection-slot-index">{visibleRecipePage * SELECTION_SLOT_COUNT + index + 1}</span>
+                <GameIcon name="system-alchemy" size={16} />
+                <span>
+                  <strong className={getGradeNameClass(getItem(recipe.resultItemId))}>{formatItemName(recipe.resultItemId)}</strong>
+                  <small>{alchemy.learnedRecipes[recipe.id] ? "已掌握" : "需研读丹方"}</small>
+                </span>
+              </button>
+            ) : (
+              <EmptySelectionSlot key={`alchemy-empty-${index}`} />
+            ),
+          )}
         </div>
+        <SelectionPager count={alchemyRecipes.length} onPageChange={setRecipePage} page={visibleRecipePage} pageCount={recipePageCount} />
         {selectedRecipe ? (
           <div className="workbench-layout">
             <section className={`workbench-stage-card blueprint-stage ${learned ? "ready" : recipeCount > 0 ? "available" : "missing"}`}>
@@ -459,14 +511,19 @@ function AlchemyPage({ game, onChange }: { game: GameState; onChange: (game: Gam
 
 function RefineryPage({ game, onChange }: { game: GameState; onChange: (game: GameState) => void }) {
   const workshop = getEquipmentWorkshop(caveRefineryWorkshopId);
+  const refineryRecipes = workshop?.recipes ?? [];
   const refinery = game.cave.refinery;
   const refineryLevel = getCaveRefineryLevel(refinery.level);
   const nextRefinery = getNextCaveRefineryLevel(refinery.level);
-  const [selectedRecipeId, setSelectedRecipeId] = useState(workshop?.recipes[0]?.id ?? "");
+  const [selectedRecipeId, setSelectedRecipeId] = useState(refineryRecipes[0]?.id ?? "");
+  const [recipePage, setRecipePage] = useState(0);
   const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(game.inventory.equipmentItems[0]?.id ?? null);
-  const selectedRecipe = workshop?.recipes.find((recipe) => recipe.id === selectedRecipeId) ?? workshop?.recipes[0] ?? null;
+  const selectedRecipe = refineryRecipes.find((recipe) => recipe.id === selectedRecipeId) ?? refineryRecipes[0] ?? null;
   const selectedEquipment = game.inventory.equipmentItems.find((item) => item.id === selectedEquipmentId) ?? null;
   const reforgeCost = selectedEquipment ? getReforgeCost(selectedEquipment, 0) : null;
+  const recipePageCount = getSelectionPageCount(refineryRecipes.length);
+  const visibleRecipePage = clampSelectionPage(recipePage, refineryRecipes.length);
+  const recipeSlots = getSelectionSlots(refineryRecipes, visibleRecipePage);
 
   return (
     <>
@@ -499,11 +556,16 @@ function RefineryPage({ game, onChange }: { game: GameState; onChange: (game: Ga
             </h2>
             <span>{workshop.name}</span>
           </div>
-          <div className="workbench-recipe-tabs" aria-label="洞府炼器图纸">
-            {workshop.recipes.map((recipe) => {
+          <SelectionHeader meta={`${refineryRecipes.length} 张图纸`} title="图纸槽" />
+          <div className="cave-slot-grid" aria-label="洞府炼器图纸">
+            {recipeSlots.map((recipe, index) => {
+              if (!recipe) {
+                return <EmptySelectionSlot key={`refinery-empty-${index}`} />;
+              }
               const item = getItem(recipe.itemId);
               return (
-                <button className={`grade-card grade-${item.grade}${recipe.id === selectedRecipe?.id ? " active" : ""}`} key={recipe.id} onClick={() => setSelectedRecipeId(recipe.id)} type="button">
+                <button className={`cave-selection-slot grade-card grade-${item.grade}${recipe.id === selectedRecipe?.id ? " active" : ""}`} key={recipe.id} onClick={() => setSelectedRecipeId(recipe.id)} type="button">
+                  <span className="selection-slot-index">{visibleRecipePage * SELECTION_SLOT_COUNT + index + 1}</span>
                   <GameIcon name="equipment-weapon" size={16} />
                   <span>
                     <strong className={getGradeNameClass(item)}>{formatItemName(item)}</strong>
@@ -513,6 +575,7 @@ function RefineryPage({ game, onChange }: { game: GameState; onChange: (game: Ga
               );
             })}
           </div>
+          <SelectionPager count={refineryRecipes.length} onPageChange={setRecipePage} page={visibleRecipePage} pageCount={recipePageCount} />
           {selectedRecipe ? <CaveCraftRecipe game={game} onChange={onChange} recipeId={selectedRecipe.id} workshopId={workshop.id} /> : null}
         </section>
       ) : null}
@@ -793,61 +856,236 @@ function MountCard({ active, game, mount, onChange }: { active: boolean; game: G
   );
 }
 
-function SeedPicker({
-  onSelect,
-  seeds,
-  selectedSeedItemId,
+function SpiritPlotDetail({
+  game,
+  onChange,
+  onPlantRequest,
+  plot,
 }: {
-  seeds: Array<{ itemId: string; amount: number; plantName: string }>;
-  selectedSeedItemId: string | null;
-  onSelect: (itemId: string) => void;
+  game: GameState;
+  plot: GameState["cave"]["spiritField"]["regions"][string]["plots"][number];
+  onChange: (game: GameState) => void;
+  onPlantRequest: () => void;
 }) {
-  if (!seeds.length) {
-    return <p className="empty-hint compact">暂无灵种，可在地图事件、灵雨或灵植地点中获得。</p>;
+  if (!plot.unlocked) {
+    return (
+      <div className="spirit-plot-dialog-body">
+        <section className="spirit-plot-summary locked">
+          <GameIcon name="system-spirit-field" size={22} />
+          <div>
+            <strong>未开垦</strong>
+            <small>升级灵田后，这块灵土会并入本府阵图。</small>
+          </div>
+        </section>
+      </div>
+    );
   }
+
+  const soilConfig = getSpiritFieldPlotGradeConfig(plot.soilGrade);
+  const nextSoilConfig = getNextSpiritFieldPlotGradeConfig(plot.soilGrade);
+  const plotGrowthMultiplier = getSpiritFieldPlotGrowthMultiplier(game, HOME_SPIRIT_FIELD_REGION_ID, plot.id);
+  const nextSoilCost = nextSoilConfig?.upgradeCost ?? null;
+
+  if (!plot.plant) {
+    return (
+      <div className="spirit-plot-dialog-body">
+        <section className={`spirit-plot-summary grade-card grade-${soilConfig.grade}`}>
+          <GameIcon name="system-spirit-field" size={22} />
+          <div>
+            <strong>空田</strong>
+            <small>
+              灵土：{itemGradeLabels[soilConfig.grade]} · 本格速度 {formatRate(plotGrowthMultiplier)}x
+            </small>
+          </div>
+          <GradeBadge compact grade={soilConfig.grade} />
+        </section>
+        <div className="cave-detail-grid">
+          <Metric label="灵土品级" value={itemGradeLabels[soilConfig.grade]} />
+          <Metric label="本格速度" value={`${formatRate(plotGrowthMultiplier)}x`} />
+          <Metric label="下阶培土" value={nextSoilConfig ? itemGradeLabels[nextSoilConfig.grade] : "已满品"} />
+          <Metric label="培土消耗" value={nextSoilCost ? describeCost(nextSoilCost) : "无"} />
+        </div>
+        <div className="spirit-field-actions">
+          <button className="primary-action compact" onClick={onPlantRequest} type="button">
+            <GameIcon name="module-inventory" size={18} />
+            种植
+            <small>打开背包灵种栏</small>
+          </button>
+          <button className="gold-button cave-upgrade-button" disabled={!nextSoilConfig} onClick={() => onChange(upgradeSpiritFieldPlot(game, HOME_SPIRIT_FIELD_REGION_ID, plot.id))} type="button">
+            {nextSoilConfig ? `培土至${itemGradeLabels[nextSoilConfig.grade]}` : "灵土已满品"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const species = getSpiritPlant(plot.plant.speciesId);
+  const mature = plot.plant.years >= species.matureYears;
+  const yearCap = getSpiritPlantYearCap(species.grade);
   return (
-    <div className="cave-seed-picker" aria-label="选择灵种">
-      {seeds.map((seed) => (
-        <button className={seed.itemId === selectedSeedItemId ? "active" : ""} key={seed.itemId} onClick={() => onSelect(seed.itemId)} type="button">
-          <GameIcon name="item-material" size={14} />
-          <span>{formatItemName(seed.itemId)}</span>
-          <small>{seed.plantName} x{seed.amount}</small>
+    <div className="spirit-plot-dialog-body">
+      <section className={`spirit-plot-summary grade-card grade-${soilConfig.grade}`}>
+        <GameIcon name="system-spirit-field" size={22} />
+        <div>
+          <strong>灵土地格</strong>
+          <small>
+            {itemGradeLabels[soilConfig.grade]} · 本格速度 {formatRate(plotGrowthMultiplier)}x
+          </small>
+        </div>
+        <GradeBadge compact grade={soilConfig.grade} />
+      </section>
+      <section className={`spirit-plot-summary grade-card grade-${species.grade}`}>
+        <GameIcon name="system-spirit-field" size={22} />
+        <div>
+          <strong className={getGradeNameClass(getItem(species.seedItemId))}>{species.name}</strong>
+          <small>{species.description}</small>
+        </div>
+        <GradeBadge compact grade={species.grade} />
+      </section>
+      <div className="cave-detail-grid">
+        <Metric label="灵土品级" value={itemGradeLabels[soilConfig.grade]} />
+        <Metric label="本格速度" value={`${formatRate(plotGrowthMultiplier)}x`} />
+        <Metric label="当前年份" value={formatPlantYears(plot.plant.years)} />
+        <Metric label="成熟年份" value={formatPlantYears(species.matureYears)} />
+        <Metric label="品级上限" value={formatPlantYears(yearCap)} />
+        <Metric label="状态" value={getPlantMaturityLabel(plot.plant)} />
+      </div>
+      <div className="cave-detail-grid">
+        <Metric label="下阶培土" value={nextSoilConfig ? itemGradeLabels[nextSoilConfig.grade] : "已满品"} />
+        <Metric label="培土消耗" value={nextSoilCost ? describeCost(nextSoilCost) : "无"} />
+      </div>
+      <p className="cave-hint">{species.effectText}</p>
+      <div className="spirit-field-actions">
+        <button className="primary-action compact" disabled={!mature} onClick={() => onChange(harvestSpiritPlant(game, HOME_SPIRIT_FIELD_REGION_ID, plot.id))} type="button">
+          收获
         </button>
-      ))}
+        <button className="ghost-button" onClick={() => onChange(uprootSpiritPlant(game, HOME_SPIRIT_FIELD_REGION_ID, plot.id))} type="button">
+          拔除
+        </button>
+      </div>
+      <button className="gold-button cave-upgrade-button" disabled={!nextSoilConfig} onClick={() => onChange(upgradeSpiritFieldPlot(game, HOME_SPIRIT_FIELD_REGION_ID, plot.id))} type="button">
+        {nextSoilConfig ? `培土至${itemGradeLabels[nextSoilConfig.grade]}` : "灵土已满品"}
+      </button>
     </div>
   );
 }
 
-function PlantedPlot({
-  game,
-  onChange,
-  plant,
-  plotId,
-  regionId,
+function SpiritSeedBag({
+  onBack,
+  onPageChange,
+  onPlant,
+  page,
+  seeds,
 }: {
-  game: GameState;
-  onChange: (game: GameState) => void;
-  plant: NonNullable<GameState["cave"]["spiritField"]["regions"][string]["plots"][number]["plant"]>;
-  plotId: string;
-  regionId: string;
+  seeds: Array<{ itemId: string; amount: number; plantName: string }>;
+  page: number;
+  onBack: () => void;
+  onPageChange: (page: number) => void;
+  onPlant: (itemId: string) => void;
 }) {
-  const species = getSpiritPlant(plant.speciesId);
-  const mature = plant.years >= species.matureYears;
+  const pageCount = getPagedSlotPageCount(seeds.length, SPIRIT_SEED_BAG_SLOT_COUNT);
+  const visiblePage = clampPagedSlotPage(page, seeds.length, SPIRIT_SEED_BAG_SLOT_COUNT);
+  const seedSlots = getPagedSlots(seeds, visiblePage, SPIRIT_SEED_BAG_SLOT_COUNT);
   return (
-    <div className="spirit-plant-detail">
-      <strong className={`grade-name grade-${plant.grade}`}>{species.name}</strong>
-      <small>
-        {itemGradeLabels[plant.grade]} / {formatPlantYears(plant.years)}
-      </small>
-      <small>{getPlantMaturityLabel(plant)}</small>
-      <div className="spirit-field-actions compact-actions">
-        <button className="primary-action compact" disabled={!mature} onClick={() => onChange(harvestSpiritPlant(game, regionId, plotId))} type="button">
-          收获
-        </button>
-        <button className="ghost-button" onClick={() => onChange(uprootSpiritPlant(game, regionId, plotId))} type="button">
-          拔除
-        </button>
+    <div className="spirit-seed-bag">
+      <div className="section-heading">
+        <h2>
+          <GameIcon name="module-inventory" size={18} />
+          灵种背包
+        </h2>
+        <span>{seeds.length} 种</span>
       </div>
+      <div className="inventory-grid-wrap spirit-seed-bag-grid">
+        <div className="inventory-grid">
+          {seedSlots.map((seed, index) => {
+            const plant = seed ? getSpiritPlantBySeed(seed.itemId) : null;
+            const item = seed ? getItem(seed.itemId) : null;
+            return seed && plant && item ? (
+              <ItemSlot
+                amount={seed.amount}
+                className="inventory-grid-slot item-grade-press"
+                grade={item.grade}
+                iconName={getItemIconName(item)}
+                key={seed.itemId}
+                name={formatItemName(item)}
+                description={`${plant.name} · ${itemGradeLabels[plant.grade]}`}
+                onClick={() => onPlant(seed.itemId)}
+                state="filled"
+              />
+            ) : (
+              <ItemSlot className="inventory-grid-slot empty" key={`seed-empty-${visiblePage}-${index}`} state="empty" />
+            );
+          })}
+        </div>
+        {seeds.length === 0 ? <p className="inventory-grid-empty">背包中暂无可种植灵种。</p> : null}
+        {pageCount > 1 ? (
+          <div className="equipment-page-controls inventory-page-controls">
+            <button className="ghost-button" disabled={visiblePage <= 0} onClick={() => onPageChange(Math.max(0, visiblePage - 1))} type="button">
+              上一页
+            </button>
+            <span>
+              {visiblePage + 1} / {pageCount}
+            </span>
+            <button className="ghost-button" disabled={visiblePage >= pageCount - 1} onClick={() => onPageChange(Math.min(pageCount - 1, visiblePage + 1))} type="button">
+              下一页
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <button className="ghost-button field-seed-close" onClick={onBack} type="button">
+        返回地块
+      </button>
+    </div>
+  );
+}
+
+function SelectionHeader({ meta, title }: { meta: string; title: string }) {
+  return (
+    <div className="cave-selection-head">
+      <strong>{title}</strong>
+      <small>{meta}</small>
+    </div>
+  );
+}
+
+function EmptySelectionSlot() {
+  return (
+    <div className="cave-selection-slot empty" aria-hidden="true">
+      <span className="selection-slot-index">空</span>
+      <GameIcon name="system-library" size={15} />
+      <span>
+        <strong>空槽</strong>
+        <small>等待解锁</small>
+      </span>
+    </div>
+  );
+}
+
+function SelectionPager({
+  count,
+  onPageChange,
+  page,
+  pageCount,
+}: {
+  count: number;
+  page: number;
+  pageCount: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (count <= SELECTION_SLOT_COUNT) {
+    return null;
+  }
+  return (
+    <div className="selection-pager">
+      <button className="ghost-button" disabled={page <= 0} onClick={() => onPageChange(Math.max(0, page - 1))} type="button">
+        上一组
+      </button>
+      <span>
+        {page + 1}/{pageCount}
+      </span>
+      <button className="ghost-button" disabled={page >= pageCount - 1} onClick={() => onPageChange(Math.min(pageCount - 1, page + 1))} type="button">
+        下一组
+      </button>
     </div>
   );
 }
@@ -904,6 +1142,32 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function getSelectionPageCount(count: number): number {
+  return getPagedSlotPageCount(count, SELECTION_SLOT_COUNT);
+}
+
+function clampSelectionPage(page: number, count: number): number {
+  return clampPagedSlotPage(page, count, SELECTION_SLOT_COUNT);
+}
+
+function getSelectionSlots<T>(items: T[], page: number): Array<T | null> {
+  return getPagedSlots(items, page, SELECTION_SLOT_COUNT);
+}
+
+function getPagedSlotPageCount(count: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(count / pageSize));
+}
+
+function clampPagedSlotPage(page: number, count: number, pageSize: number): number {
+  return Math.min(Math.max(0, page), getPagedSlotPageCount(count, pageSize) - 1);
+}
+
+function getPagedSlots<T>(items: T[], page: number, pageSize: number): Array<T | null> {
+  const start = clampPagedSlotPage(page, items.length, pageSize) * pageSize;
+  const visibleItems = items.slice(start, start + pageSize);
+  return Array.from({ length: pageSize }, (_, index) => visibleItems[index] ?? null);
+}
+
 function getCostSlots(cost: Cost, game: GameState): Array<{ id: string; name: string; required: number; owned: number; kind: "item" | "stones"; iconName: GameIconName }> {
   const slots: Array<{ id: string; name: string; required: number; owned: number; kind: "item" | "stones"; iconName: GameIconName }> = [];
   if ((cost.spiritStones ?? 0) > 0) {
@@ -944,6 +1208,16 @@ function getItemIconName(item: ItemConfig): GameIconName {
     return "system-library";
   }
   return "item";
+}
+
+function getHighestSoilGrade(plots: GameState["cave"]["spiritField"]["regions"][string]["plots"]): ItemGrade {
+  return plots.reduce<ItemGrade>((highest, plot) => {
+    if (!plot.unlocked) {
+      return highest;
+    }
+    const grade = getSpiritFieldPlotGradeConfig(plot.soilGrade).grade;
+    return itemGradeOrder.indexOf(grade) > itemGradeOrder.indexOf(highest) ? grade : highest;
+  }, "fan");
 }
 
 function getGradeNameClass(item: ItemConfig): string {

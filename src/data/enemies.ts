@@ -1,4 +1,4 @@
-import type { CombatReward, Stats } from "../types";
+import type { CombatReward, CombatTimeoutResult, CombatType, ItemAffix, Stats } from "../types";
 
 export interface EnemyTemplate {
   id: string;
@@ -6,11 +6,14 @@ export interface EnemyTemplate {
   kind: "beast" | "enemyCultivator";
   stats: Stats;
   skillIds: string[];
+  affixes?: ItemAffix[];
 }
 
 export interface EnemyGroup {
   id: string;
   title: string;
+  combatType?: CombatType;
+  timeoutResult?: CombatTimeoutResult;
   enemies: Array<{ templateId: string; count: number }>;
   rewards: CombatReward;
 }

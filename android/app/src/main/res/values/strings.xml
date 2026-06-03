@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">问仙文字RPG</string>
+    <string name="title_activity_main">问仙文字RPG</string>
+    <string name="package_name">com.xiuxian.textrpg</string>
+    <string name="custom_url_scheme">com.xiuxian.textrpg</string>
+</resources>

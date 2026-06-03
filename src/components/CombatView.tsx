@@ -1,7 +1,17 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getSkill } from "../data/skills";
-import { canUseArtifactAction, getSkillSpiritCost, performArtifactAction, performEscape, performPlayerBasic, performPlayerSkill, performUseItem } from "../game/combatEngine";
+import {
+  canUseArtifactAction,
+  canUseCombatSkill,
+  canUsePillAction,
+  getSkillSpiritCost,
+  performArtifactAction,
+  performEscape,
+  performPlayerBasic,
+  performPlayerSkill,
+  performUseItem,
+} from "../game/combatEngine";
 import { getEquippedItem } from "../game/equipment";
 import { defaultCombatLoadout } from "../game/state";
 import type { CombatActor, CombatState, ItemConfig, SkillConfig } from "../types";
@@ -13,6 +23,7 @@ type LogNameMeta = {
   name: string;
   className: string;
 };
+type ActorColumnSide = "ally" | "enemy";
 
 export default function CombatView() {
   const activeGame = useActiveGame();
@@ -44,9 +55,11 @@ export default function CombatView() {
   const targetPool = selectedSkill ? getTargetPool(combat.allies, combat.enemies, selectedSkill.targetType) : [];
   const logNames = useMemo(() => getLogNameMeta(combat), [combat]);
   const hasUsableLoadoutAction =
-    carriedSkills.some((skill) => canUseSkill(skill, player, playerTurn)) ||
-    canUseSkill(divineSkill, player, playerTurn) ||
-    Boolean(playerTurn && pill?.combatHeal && pillAmount > 0);
+    carriedSkills.some((skill) => canUseSkillButton(skill, player, playerTurn)) ||
+    canUseSkillButton(divineSkill, player, playerTurn) ||
+    Boolean(playerTurn && canUseArtifactAction(game)) ||
+    Boolean(playerTurn && canUsePillAction(player) && pill?.combatHeal && pillAmount > 0);
+  const displayRound = Math.min(Math.max(combat.round, 1), combat.maxRounds);
 
   useEffect(() => {
     syncCombat(combat.id);
@@ -68,8 +81,9 @@ export default function CombatView() {
   }
 
   function renderSkillButton(skill: SkillConfig | null, label: string) {
-    const disabled = !canUseSkill(skill, player, playerTurn);
+    const disabled = !canUseSkillButton(skill, player, playerTurn);
     const iconName: GameIconName = label === "神通" ? "equipment-artifact" : label.startsWith("武技") ? "combat" : "module-cultivation";
+    const disabledLabel = player?.skillDisabledActions ? `禁技能 ${player.skillDisabledActions} 次` : player && skill && player.spirit < getSkillSpiritCost(player, skill) ? "灵力不足" : "未携带";
     return (
       <button
         className={`combat-slot ${skill ? "" : "empty"}`}
@@ -90,7 +104,7 @@ export default function CombatView() {
           {label}
         </span>
         <strong>{skill?.name ?? "空槽"}</strong>
-        <small>{skill ? (getSkillSpiritCost(player, skill) ? `${getSkillSpiritCost(player, skill)} 灵力` : "无消耗") : "未携带"}</small>
+        <small>{skill ? (disabled && disabledLabel !== "未携带" ? disabledLabel : getSkillSpiritCost(player, skill) ? `${getSkillSpiritCost(player, skill)} 灵力` : "无消耗") : "未携带"}</small>
       </button>
     );
   }
@@ -110,6 +124,7 @@ export default function CombatView() {
 
   function renderTreasureButton() {
     const artifactReady = playerTurn && canUseArtifactAction(game);
+    const artifactDisabled = player?.artifactDisabledActions && player.artifactDisabledActions > 0;
     return (
       <button className={`combat-slot utility ${equippedTreasure ? `grade-card grade-${equippedTreasure.grade}` : "empty"}`} disabled={!artifactReady} onClick={() => onChange(performArtifactAction(game))}>
         <span>
@@ -117,7 +132,7 @@ export default function CombatView() {
           法宝
         </span>
         <strong className={equippedTreasure ? getGradeNameClass(equippedTreasure) : ""}>{equippedTreasure ? formatItemName(equippedTreasure) : "空槽"}</strong>
-        <small>{equippedTreasure ? (artifactReady ? "可催动" : "被动生效") : "未装备"}</small>
+        <small>{equippedTreasure ? (artifactDisabled ? `禁法宝 ${player?.artifactDisabledActions} 次` : artifactReady ? "可催动" : "被动生效") : "未装备"}</small>
       </button>
     );
   }
@@ -130,7 +145,7 @@ export default function CombatView() {
             <GameIcon name="combat" size={18} />
             {combat.title}
           </h2>
-          <span>第 {combat.round} 回合</span>
+          <span>第 {displayRound} / {combat.maxRounds} 回合</span>
         </div>
         <div className="combat-header-actions">
           <button className={`combat-top-button ${logsOpen ? "active" : ""}`} onClick={toggleLogs}>
@@ -164,8 +179,8 @@ export default function CombatView() {
       ) : null}
 
       <div className="combat-columns">
-        <ActorColumn title="我方" actors={combat.allies} />
-        <ActorColumn title="敌方" actors={combat.enemies} />
+        <ActorColumn side="ally" title="我方" actors={combat.allies} />
+        <ActorColumn side="enemy" title="敌方" actors={combat.enemies} />
       </div>
 
       {selectedSkill ? (
@@ -202,7 +217,7 @@ export default function CombatView() {
             {renderTreasureButton()}
             <button
               className={`combat-slot utility ${pill?.combatHeal ? `grade-card grade-${pill.grade}` : "empty"}`}
-              disabled={!playerTurn || !pill?.combatHeal || pillAmount <= 0}
+              disabled={!playerTurn || !canUsePillAction(player) || !pill?.combatHeal || pillAmount <= 0}
               onClick={() => loadout.pillItemId && onChange(performUseItem(game, loadout.pillItemId))}
             >
               <span>
@@ -210,7 +225,7 @@ export default function CombatView() {
                 丹药
               </span>
               <strong className={pill ? getGradeNameClass(pill) : ""}>{pill ? formatItemName(pill) : "空槽"}</strong>
-              <small>{pill?.combatHeal ? `x${pillAmount} · 气血 +${pill.combatHeal}` : "未携带"}</small>
+              <small>{player?.pillDisabledActions ? `禁丹药 ${player.pillDisabledActions} 次` : pill?.combatHeal ? `x${pillAmount} · 气血 +${pill.combatHeal}` : "未携带"}</small>
             </button>
           </div>
         </div>
@@ -231,15 +246,16 @@ function getPlayerSkillSlot(skillId: string | null, player?: CombatActor): Skill
   return skill.allowedUsers.includes("player") ? skill : null;
 }
 
-function canUseSkill(skill: SkillConfig | null, player: CombatActor | undefined, playerTurn: boolean): boolean {
-  return Boolean(skill && playerTurn && player && player.spirit >= getSkillSpiritCost(player, skill));
+function canUseSkillButton(skill: SkillConfig | null, player: CombatActor | undefined, playerTurn: boolean): boolean {
+  return Boolean(skill && playerTurn && canUseCombatSkill(player, skill));
 }
 
-function ActorColumn({ title, actors }: { title: string; actors: CombatActor[] }) {
+function ActorColumn({ side, title, actors }: { side: ActorColumnSide; title: string; actors: CombatActor[] }) {
+  const iconName: GameIconName = side === "ally" ? "team" : "combat";
   return (
-    <div className="actor-column">
+    <div className={`actor-column actor-column-${side}`} aria-label={title}>
       <h3>
-        <GameIcon name={title === "我方" ? "team" : "combat"} size={15} />
+        <GameIcon name={iconName} size={15} />
         {title}
       </h3>
       {actors.map((actor) => (
@@ -252,10 +268,53 @@ function ActorColumn({ title, actors }: { title: string; actors: CombatActor[] }
           <small>
             气血 {actor.hp}/{actor.maxHp} · 灵力 {actor.spirit}/{actor.maxSpirit}
           </small>
+          <ActorStatusChips actor={actor} />
         </div>
       ))}
     </div>
   );
+}
+
+function ActorStatusChips({ actor }: { actor: CombatActor }) {
+  const chips = getActorStatusChips(actor);
+  if (!chips.length) {
+    return null;
+  }
+  return (
+    <div className="actor-status-chips">
+      {chips.map((chip) => (
+        <span key={chip}>{chip}</span>
+      ))}
+    </div>
+  );
+}
+
+function getActorStatusChips(actor: CombatActor): string[] {
+  const chips: string[] = [];
+  if (actor.shield && actor.shield > 0) {
+    chips.push(`护盾 ${actor.shield}`);
+  }
+  if (actor.basicAttackDisabledActions && actor.basicAttackDisabledActions > 0) {
+    chips.push(`禁普攻 ${actor.basicAttackDisabledActions} 次行动`);
+  }
+  if (actor.skillDisabledActions && actor.skillDisabledActions > 0) {
+    chips.push(`禁技能 ${actor.skillDisabledActions} 次行动`);
+  }
+  if (actor.artifactDisabledActions && actor.artifactDisabledActions > 0) {
+    chips.push(`禁法宝 ${actor.artifactDisabledActions} 次行动`);
+  }
+  if (actor.pillDisabledActions && actor.pillDisabledActions > 0) {
+    chips.push(`禁丹药 ${actor.pillDisabledActions} 次行动`);
+  }
+  actor.equipmentSeals?.forEach((seal) => {
+    if (seal.remainingRounds > 0) {
+      chips.push(`封器：${seal.label} ${seal.remainingRounds} 回合`);
+    }
+  });
+  if (actor.reviveReady) {
+    chips.push("命灯");
+  }
+  return chips;
 }
 
 function Meter({ value, max }: { value: number; max: number }) {

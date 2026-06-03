@@ -1,14 +1,17 @@
 import { getSpiritArrayConfig } from "../data/cave";
-import { formatItemName, itemGradeMetas } from "../data/items";
+import { formatItemName, itemGradeLabels } from "../data/items";
 import { CALENDAR_DAYS_PER_YEAR } from "../data/time";
 import {
   createDefaultSpiritFieldRegionState,
   createDefaultSpiritFieldState,
   getNextSpiritFieldLevelConfig,
+  getNextSpiritFieldPlotGradeConfig,
   getSpiritFieldLevelConfig,
+  getSpiritFieldPlotGradeConfig,
   getSpiritFieldRegionConfig,
   getSpiritPlant,
   getSpiritPlantBySeed,
+  getSpiritPlantYearCap,
   spiritFieldRegionConfigs,
   spiritPlants,
 } from "../data/spiritPlants";
@@ -123,9 +126,7 @@ export function advanceSpiritFieldByDays(game: GameState, days: number): GameSta
       if (!region.unlocked) {
         return [regionId, region];
       }
-      const multiplier = getSpiritFieldGrowthMultiplier(game, regionId);
-      const levelConfig = getSpiritFieldLevelConfig(region.level);
-      const growthDays = safeDays * multiplier;
+      const baseMultiplier = getSpiritFieldGrowthMultiplier(game, regionId);
       return [
         regionId,
         {
@@ -135,7 +136,9 @@ export function advanceSpiritFieldByDays(game: GameState, days: number): GameSta
               return plot;
             }
             const species = getSpiritPlant(plot.plant.speciesId);
-            const maxYears = Math.min(species.maxMeaningfulYears, levelConfig.maxPlantYears);
+            const maxYears = getSpiritPlantYearCap(species.grade);
+            const plotMultiplier = roundMultiplier(baseMultiplier * getSpiritFieldPlotGradeConfig(plot.soilGrade).growthMultiplier);
+            const growthDays = safeDays * plotMultiplier;
             const totalProgress = plot.plant.growthProgressDays + growthDays;
             const gainedYears = Math.floor(totalProgress / CALENDAR_DAYS_PER_YEAR);
             return {
@@ -187,11 +190,6 @@ export function plantSpiritSeed(game: GameState, regionId: string, plotId: strin
     return appendLog(game, "这块灵田已经种有灵植。");
   }
 
-  const levelConfig = getSpiritFieldLevelConfig(region.level);
-  if (itemGradeMetas[species.grade].tier > itemGradeMetas[levelConfig.maxGrade].tier) {
-    return appendLog(game, `当前灵田最高只能承载${levelConfig.maxGrade}品级灵植，需先升级灵田。`);
-  }
-
   const planted: SpiritPlantInstance = {
     id: `plant_${species.speciesId}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
     speciesId: species.speciesId,
@@ -199,7 +197,7 @@ export function plantSpiritSeed(game: GameState, regionId: string, plotId: strin
     plantedAt: game.world.calendar,
     years: 0,
     plotId,
-    growthBonusSnapshot: getSpiritFieldGrowthMultiplier(game, regionId),
+    growthBonusSnapshot: getSpiritFieldPlotGrowthMultiplier(game, regionId, plotId),
     growthProgressDays: 0,
   };
   const paidGame = removeItems(game, [{ itemId: seedItemId, amount: 1 }]);
@@ -328,7 +326,53 @@ export function upgradeSpiritField(game: GameState, regionId: string): GameState
         },
       },
     },
-    `${regionConfig.name}升至 ${nextLevel.level} 级，可承载更高年份与更高品级灵植。`,
+    `${regionConfig.name}升至 ${nextLevel.level} 级，灵土开垦范围与年份增长更进一步。`,
+  );
+}
+
+export function upgradeSpiritFieldPlot(game: GameState, regionId: string, plotId: string): GameState {
+  const field = normalizeSpiritFieldState(game.cave.spiritField);
+  const region = field.regions[regionId];
+  const regionConfig = getSpiritFieldRegionConfig(regionId);
+  if (!region?.unlocked) {
+    return appendLog(game, `${regionConfig.name}尚未开辟。`);
+  }
+  const plot = region.plots.find((item) => item.id === plotId);
+  if (!plot?.unlocked) {
+    return appendLog(game, "这块灵田尚未开垦。");
+  }
+
+  const currentGrade = getSpiritFieldPlotGradeConfig(plot.soilGrade);
+  const nextGrade = getNextSpiritFieldPlotGradeConfig(plot.soilGrade);
+  if (!nextGrade?.upgradeCost) {
+    return appendLog(game, "这块灵土已臻当前品级上限。");
+  }
+  if (!canAffordCost(game, nextGrade.upgradeCost)) {
+    return appendLog(game, `培土所需资源不足：${describeCost(nextGrade.upgradeCost)}。`);
+  }
+
+  const paidGame = spendCost(game, nextGrade.upgradeCost);
+  const nextRegion = {
+    ...region,
+    plots: region.plots.map((item) => (item.id === plotId ? { ...item, soilGrade: nextGrade.grade } : item)),
+  };
+
+  return appendLog(
+    {
+      ...paidGame,
+      cave: {
+        ...paidGame.cave,
+        spiritField: {
+          ...field,
+          activeRegionId: regionId,
+          regions: {
+            ...field.regions,
+            [regionId]: nextRegion,
+          },
+        },
+      },
+    },
+    `你为${regionConfig.name}${formatPlotName(plotId)}培土引脉，灵土由${itemGradeLabels[currentGrade.grade]}升为${itemGradeLabels[nextGrade.grade]}，该格种植速度提升至 ${nextGrade.growthMultiplier.toFixed(2)}x。`,
   );
 }
 
@@ -352,6 +396,15 @@ export function getSpiritFieldGrowthMultiplier(game: GameState, regionId = norma
   const regionWeather = game.world.weather.regions[game.world.regionId] ?? game.world.weather.global;
   const weatherBonus = Math.max(getWeatherConfig(game.world.weather.global.weatherId).plantGrowthMultiplier, getWeatherConfig(regionWeather.weatherId).plantGrowthMultiplier);
   return roundMultiplier(fieldConfig.growthMultiplier * regionConfig.growthMultiplier * (1 + (arrayConfig.multiplier - 1) * 0.5) * weatherBonus);
+}
+
+export function getSpiritFieldPlotGrowthMultiplier(game: GameState, regionId: string, plotId: string): number {
+  const baseMultiplier = getSpiritFieldGrowthMultiplier(game, regionId);
+  const field = normalizeSpiritFieldState(game.cave.spiritField);
+  const region = field.regions[regionId] ?? field.regions.home_cave;
+  const plot = region.plots.find((item) => item.id === plotId);
+  const soilConfig = getSpiritFieldPlotGradeConfig(plot?.soilGrade);
+  return roundMultiplier(baseMultiplier * soilConfig.growthMultiplier);
 }
 
 export function formatPlantYears(years: number): string {
@@ -392,6 +445,7 @@ function normalizeRegionState(regionId: string, region: Partial<SpiritFieldRegio
     return {
       id: typeof rawPlot?.id === "string" ? rawPlot.id : defaultPlot.id,
       unlocked: unlocked && (index < levelConfig.plotCount || Boolean(rawPlot?.unlocked)),
+      soilGrade: getSpiritFieldPlotGradeConfig(rawPlot?.soilGrade ?? defaultPlot.soilGrade).grade,
       plant: normalizePlant(rawPlot?.plant, defaultPlot.id),
     };
   });

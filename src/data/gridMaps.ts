@@ -1,9 +1,9 @@
 import type { GridCell, GridCellDistanceUnit, GridCoord, GridMapData, GridMapLayer, GridNavigationState, GridRoadSegment, GridTerrain } from "../types";
-import { regions, type LocationNode } from "./world";
+import { regions, type LocalSceneLink, type LocationNode } from "./world";
 import { getLocalMapIdForLocation, worldPois } from "./worldPois";
 
 export const WORLD_GRID_MAP_ID = "world";
-export const GRID_NAVIGATION_VERSION = 3;
+export const GRID_NAVIGATION_VERSION = 4;
 
 export const WORLD_GRID_MAP_WIDTH = 320;
 export const WORLD_GRID_MAP_HEIGHT = 200;
@@ -203,9 +203,14 @@ function createLocalGridMaps(): GridMapData[] {
         return;
       }
       const profile = getLocalMapProfile(location);
+      const pathRestricted = isLocalPathRestricted(location);
       const sceneCoords = createLocalSceneCoords(location, profile.width, profile.height);
-      const roadKeys = createLocalRoadKeySet(sceneCoords);
-      const defaultCoord = sceneCoords[location.scenes[0]?.id] ?? { x: Math.floor(profile.width / 2), y: Math.floor(profile.height / 2) };
+      const sceneLinks = createLocalSceneLinks(location, pathRestricted);
+      const roadSegments = createLocalRoadSegments(location, sceneCoords, sceneLinks);
+      const roadKeys = createRoadKeySet(roadSegments, 0, profile.width, profile.height);
+      const entrySceneId = getLocalEntrySceneId(location);
+      const entryCoord = entrySceneId ? sceneCoords[entrySceneId] : undefined;
+      const defaultCoord = entryCoord ?? { x: Math.floor(profile.width / 2), y: Math.floor(profile.height / 2) };
       localSceneCoords[location.id] = sceneCoords;
       localMapDefaults[mapId] = defaultCoord;
       localMapLocationIds[mapId] = location.id;
@@ -228,7 +233,7 @@ function createLocalGridMaps(): GridMapData[] {
             regionId: region.id,
             regionTag: region.name,
             climateTag: profile.climateTag,
-            walkable: true,
+            walkable: !pathRestricted,
           }),
           blockedRects: [
             { x: 0, y: 0, width: profile.width, height: 1 },
@@ -239,6 +244,7 @@ function createLocalGridMaps(): GridMapData[] {
           ],
           terrainRects: profile.terrainRects,
           roadKeys,
+          roadSegments: pathRestricted ? roadSegments : [],
           poiCells: Object.entries(sceneCoords).map(([sceneId, coord]) => ({
             coord,
             poiId: `${location.id}:${sceneId}`,
@@ -277,7 +283,7 @@ function createGridMap(config: GridMapConfig): GridMapData {
       cells.push({
         x,
         y,
-        walkable: Boolean(poi) || (!isBlocked && (terrainRect?.walkable ?? base.walkable)),
+        walkable: Boolean(poi) || (!isBlocked && (isRoad || (terrainRect?.walkable ?? base.walkable))),
         movementCost: poi ? 1 : isRoad ? 1 : terrainRect?.movementCost ?? base.movementCost,
         regionId: poi?.regionId ?? terrainRect?.regionId ?? base.regionId,
         terrain,
@@ -472,6 +478,11 @@ function createLocalSceneCoords(location: LocationNode, width: number, height: n
   const maxY = height - 5;
 
   scenes.forEach((scene, index) => {
+    const configuredCoord = location.localSceneCoords?.[scene.id];
+    if (configuredCoord) {
+      coords[scene.id] = clampLocalSceneCoord(configuredCoord, width, height);
+      return;
+    }
     const column = index % columns;
     const row = Math.floor(index / columns);
     coords[scene.id] = {
@@ -481,6 +492,67 @@ function createLocalSceneCoords(location: LocationNode, width: number, height: n
   });
 
   return coords;
+}
+
+function clampLocalSceneCoord(coord: GridCoord, width: number, height: number): GridCoord {
+  return {
+    x: Math.min(width - 2, Math.max(1, Math.floor(coord.x))),
+    y: Math.min(height - 2, Math.max(1, Math.floor(coord.y))),
+  };
+}
+
+function getLocalEntrySceneId(location: LocationNode): string | undefined {
+  return location.entrySceneId && location.scenes.some((scene) => scene.id === location.entrySceneId) ? location.entrySceneId : location.scenes[0]?.id;
+}
+
+function isLocalPathRestricted(location: LocationNode): boolean {
+  return location.type === "wild" || location.type === "secret";
+}
+
+function createLocalSceneLinks(location: LocationNode, pathRestricted: boolean): LocalSceneLink[] {
+  const sceneIds = new Set(location.scenes.map((scene) => scene.id));
+  const configuredLinks = (location.localSceneLinks ?? []).filter(
+    (link) => sceneIds.has(link.fromSceneId) && sceneIds.has(link.toSceneId) && link.fromSceneId !== link.toSceneId,
+  );
+  if (configuredLinks.length > 0) {
+    return configuredLinks;
+  }
+
+  if (location.scenes.length < 2) {
+    return [];
+  }
+
+  if (pathRestricted) {
+    return location.scenes.slice(1).map((scene, index) => ({
+      fromSceneId: location.scenes[index].id,
+      toSceneId: scene.id,
+    }));
+  }
+
+  const hubSceneId = location.scenes[0].id;
+  return location.scenes.slice(1).map((scene) => ({
+    fromSceneId: hubSceneId,
+    toSceneId: scene.id,
+  }));
+}
+
+function createLocalRoadSegments(location: LocationNode, sceneCoords: Record<string, GridCoord>, sceneLinks: LocalSceneLink[]): GridRoadSegment[] {
+  return sceneLinks.flatMap((link, index) => {
+    const from = sceneCoords[link.fromSceneId];
+    const to = sceneCoords[link.toSceneId];
+    if (!from || !to) {
+      return [];
+    }
+    return [
+      {
+        id: `local_road_${index + 1}_${location.id}_${link.fromSceneId}_${link.toSceneId}`,
+        fromId: link.fromSceneId,
+        toId: link.toSceneId,
+        kind: link.kind ?? (location.type === "secret" ? "spirit_route" : location.type === "wild" ? "trail" : "road"),
+        points: createCardinalLineCoords(from, to),
+      },
+    ];
+  });
 }
 
 function createWorldRoadSegments(pairs: Array<[string, string]>): GridRoadSegment[] {
@@ -506,17 +578,6 @@ function createWorldRoadSegments(pairs: Array<[string, string]>): GridRoadSegmen
 function createRoadKeySet(segments: GridRoadSegment[], radius: number, width: number, height: number): Set<string> {
   const keys = new Set<string>();
   segments.forEach((segment) => addWideLineKeys(keys, segment.points, radius, width, height));
-  return keys;
-}
-
-function createLocalRoadKeySet(sceneCoords: Record<string, GridCoord>): Set<string> {
-  const coords = Object.values(sceneCoords);
-  const keys = new Set<string>();
-  if (coords.length < 2) {
-    return keys;
-  }
-  const hub = coords[0];
-  coords.slice(1).forEach((coord) => addWideLineKeys(keys, createLineCoords(hub, coord), 0, 999, 999));
   return keys;
 }
 
@@ -563,6 +624,27 @@ function createLineCoords(from: GridCoord, to: GridCoord): GridCoord[] {
   return coords;
 }
 
+function createCardinalLineCoords(from: GridCoord, to: GridCoord): GridCoord[] {
+  const coords: GridCoord[] = [{ x: from.x, y: from.y }];
+  let x = from.x;
+  let y = from.y;
+
+  while (x !== to.x || y !== to.y) {
+    const deltaX = to.x - x;
+    const deltaY = to.y - y;
+    if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) {
+      x += Math.sign(deltaX);
+    } else if (deltaY !== 0) {
+      y += Math.sign(deltaY);
+    } else {
+      x += Math.sign(deltaX);
+    }
+    coords.push({ x, y });
+  }
+
+  return coords;
+}
+
 function getSceneTerrain(location: LocationNode, sceneId: string): GridTerrain {
   const scene = location.scenes.find((item) => item.id === sceneId);
   if (!scene) {
@@ -589,10 +671,11 @@ function isCoordInRect(coord: GridCoord, rect: Rect): boolean {
 
 function normalizeGridCoordForVersion(map: GridMapData, coord: GridCoord, rawMapVersion: number | undefined): GridCoord {
   const nextCoord = rawMapVersion === GRID_NAVIGATION_VERSION ? coord : migrateLegacyGridCoord(map, coord, rawMapVersion);
-  return {
+  const clampedCoord = {
     x: Math.min(map.width - 1, Math.max(0, Math.floor(nextCoord.x))),
     y: Math.min(map.height - 1, Math.max(0, Math.floor(nextCoord.y))),
   };
+  return getMapCell(map, clampedCoord)?.walkable ? clampedCoord : findNearestWalkableMapCoord(map, clampedCoord) ?? clampedCoord;
 }
 
 function migrateLegacyGridCoord(map: GridMapData, coord: GridCoord, rawMapVersion: number | undefined): GridCoord {
@@ -609,4 +692,44 @@ function migrateLegacyGridCoord(map: GridMapData, coord: GridCoord, rawMapVersio
 
 function gridCoordKey(coord: GridCoord): string {
   return `${coord.x},${coord.y}`;
+}
+
+function getMapCell(map: GridMapData, coord: GridCoord): GridCell | undefined {
+  if (coord.x < 0 || coord.x >= map.width || coord.y < 0 || coord.y >= map.height) {
+    return undefined;
+  }
+  return map.cells[coord.y * map.width + coord.x];
+}
+
+function findNearestWalkableMapCoord(map: GridMapData, start: GridCoord): GridCoord | null {
+  const visited = new Set<string>([gridCoordKey(start)]);
+  const queue: GridCoord[] = [start];
+  const directions: GridCoord[] = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+  ];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      break;
+    }
+    if (getMapCell(map, current)?.walkable) {
+      return current;
+    }
+
+    directions.forEach((direction) => {
+      const next = { x: current.x + direction.x, y: current.y + direction.y };
+      const key = gridCoordKey(next);
+      if (visited.has(key) || !getMapCell(map, next)) {
+        return;
+      }
+      visited.add(key);
+      queue.push(next);
+    });
+  }
+
+  return null;
 }

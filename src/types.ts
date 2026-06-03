@@ -27,6 +27,17 @@ export type EquipmentSpecialEffect =
   | "on_hit_fire"
   | "on_hit_thunder"
   | "double_strike"
+  | "basic_attack_damage_pct"
+  | "group_attack"
+  | "disable_basic_attack"
+  | "disable_skill"
+  | "disable_artifact"
+  | "disable_pill"
+  | "disable_revive"
+  | "seal_random_equipment"
+  | "break_shield"
+  | "dispel_over_time"
+  | "break_start_buff"
   | "execute_low_hp"
   | "armor_break_pct"
   | "damage_reduce_pct"
@@ -410,6 +421,7 @@ export interface SpiritPlantInstance {
 export interface SpiritFieldPlot {
   id: string;
   unlocked: boolean;
+  soilGrade: ItemGrade;
   plant: SpiritPlantInstance | null;
 }
 
@@ -483,13 +495,24 @@ export interface CombatActor extends Stats {
   hp: number;
   spirit: number;
   skillIds: string[];
+  baseStats?: Stats;
+  combatAffixes?: ItemAffix[];
   equipmentAffixes?: ItemAffix[];
+  equipmentSeals?: CombatEquipmentSeal[];
+  basicAttackDisabledActions?: number;
+  skillDisabledActions?: number;
+  artifactDisabledActions?: number;
+  pillDisabledActions?: number;
+  reviveDisabledActions?: number;
+  initiativeGradeRank?: number;
   defending?: boolean;
   guardedTurns?: number;
   attackDownTurns?: number;
   shield?: number;
   burnTurns?: number;
   burnDamage?: number;
+  poisonTurns?: number;
+  poisonDamage?: number;
   speedUpTurns?: number;
   speedUpAmount?: number;
   dodgeUpTurns?: number;
@@ -506,17 +529,40 @@ export interface CombatReward {
   items: ItemAmount[];
 }
 
+export type CombatType = "normal" | "elite" | "boss" | "survival";
+export type CombatTimeoutResult = "escape" | "defeat" | "victory";
+
+export interface CombatEquipmentSeal {
+  slotId: EquipmentSlotId;
+  label: string;
+  remainingRounds: number;
+}
+
+export interface CombatReturnContext {
+  regionId: string;
+  locationId: string;
+  sceneId: string;
+  activeMapId: string;
+  position?: GridCoord;
+}
+
 export interface CombatState {
   id: string;
   groupId: string;
   title: string;
+  combatType: CombatType;
+  timeoutResult: CombatTimeoutResult;
+  maxRounds: number;
+  preparationComplete: boolean;
   allies: CombatActor[];
   enemies: CombatActor[];
   turnOrder: string[];
   turnIndex: number;
   round: number;
+  lastRoundStarted?: number;
   logs: string[];
   rewards: CombatReward;
+  returnContext?: CombatReturnContext;
 }
 
 export interface GameState {
@@ -541,7 +587,7 @@ export interface SettingsState {
 }
 
 export interface RootSave {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   recentSlotId: string | null;
   settings: SettingsState;
   slots: Array<SaveSlot | null>;

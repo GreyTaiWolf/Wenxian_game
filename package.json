@@ -9,6 +9,8 @@
     "build": "npm run typecheck && node ./node_modules/vite/bin/vite.js build",
     "test": "node --test tests/basic.test.mjs",
     "quality": "npm run typecheck && npm run test && npm run build",
+    "android:sync": "npm run build && cap sync android",
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
@@ -20,6 +22,9 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
     "@types/react": "^18.3.21",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.4.1",

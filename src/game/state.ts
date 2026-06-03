@@ -1,6 +1,7 @@
 import { formatItemName, getItem, normalizeItemId } from "../data/items";
 import { createDefaultNpcWorldState } from "../data/npcs";
 import { getNextRealm, getRealm } from "../data/progression";
+import { getLocation, getLocationEntryScene } from "../data/world";
 import { createDefaultGridNavigationState } from "../data/gridMaps";
 import { createDefaultAlchemyState, createDefaultBeastStableState, createDefaultCaveRefineryState, createDefaultMountYardState, getPetConfig } from "../data/caveFacilities";
 import { createDefaultSpiritFieldState } from "../data/spiritPlants";
@@ -166,6 +167,8 @@ export function createNewGame(name: string): GameState {
   const starterRobe = createEquipmentInstance("cloth_robe", { id: "starter_robe" });
   const starterBoots = createEquipmentInstance("cloth_boots", { id: "starter_boots" });
   const starterEquipmentItems = [starterWeapon, starterRobe, starterBoots].filter((item) => item !== null);
+  const initialLocation = getLocation("central", "qingyun_city");
+  const initialScene = getLocationEntryScene(initialLocation);
 
   return {
     player: {
@@ -208,8 +211,8 @@ export function createNewGame(name: string): GameState {
     },
     world: {
       regionId: "central",
-      locationId: "qingyun_city",
-      sceneId: "gate",
+      locationId: initialLocation.id,
+      sceneId: initialScene.id,
       lastTownId: "qingyun_city",
       sectJoined: false,
       sectContribution: 0,

@@ -9,6 +9,8 @@ const worldSource = readFileSync("src/data/world.ts", "utf8");
 const worldPoiSource = readFileSync("src/data/worldPois.ts", "utf8");
 const gridMapsSource = readFileSync("src/data/gridMaps.ts", "utf8");
 const explorePanelSource = readFileSync("src/components/ExplorePanel.tsx", "utf8");
+const gameScreenSource = readFileSync("src/components/GameScreen.tsx", "utf8");
+const combatViewSource = readFileSync("src/components/CombatView.tsx", "utf8");
 const inventoryPanelSource = readFileSync("src/components/InventoryPanel.tsx", "utf8");
 const affixRowSource = readFileSync("src/components/ui/AffixRow.tsx", "utf8");
 const styleSource = readFileSync("src/styles.css", "utf8");
@@ -19,6 +21,9 @@ const generateEquipmentSource = readFileSync("src/game/generateEquipment.ts", "u
 const equipmentWorkshopSource = readFileSync("src/data/equipmentWorkshops.ts", "utf8");
 const equipmentWorkshopGameSource = readFileSync("src/game/equipmentWorkshop.ts", "utf8");
 const equipmentGameSource = readFileSync("src/game/equipment.ts", "utf8");
+const combatEngineSource = readFileSync("src/game/combatEngine.ts", "utf8");
+const saveSource = readFileSync("src/game/save.ts", "utf8");
+const stateSource = readFileSync("src/game/state.ts", "utf8");
 
 function numericConst(name) {
   const match = timeSource.match(new RegExp(`export const ${name} = ([0-9]+)`));
@@ -227,6 +232,74 @@ test("road-biased A* routes use recorded world roads", () => {
   }
 });
 
+test("black wind mountain starts at mountain path and caps local path links", () => {
+  const blackWindMatch = worldSource.match(/id: "black_wind_mountain"[\s\S]*?id: "herb_valley"/);
+  assert.ok(blackWindMatch, "black wind mountain block should exist");
+  const blackWindSource = blackWindMatch[0];
+
+  assert.match(blackWindSource, /entrySceneId: "mountain_path"/);
+  assert.match(blackWindSource, /mountain_path:\s*\{\s*x: 28,\s*y: 7\s*\}/);
+
+  const linkMatches = [...blackWindSource.matchAll(/fromSceneId: "([^"]+)", toSceneId: "([^"]+)"/g)];
+  assert.equal(linkMatches.length, 6);
+  const degrees = new Map();
+  for (const [, fromSceneId, toSceneId] of linkMatches) {
+    degrees.set(fromSceneId, (degrees.get(fromSceneId) ?? 0) + 1);
+    degrees.set(toSceneId, (degrees.get(toSceneId) ?? 0) + 1);
+  }
+
+  for (const sceneId of ["mountain_path", "black_spirit_spring", "wolves", "cultivators", "mojin_cave", "black_wind_demon_stockade"]) {
+    assert.ok((degrees.get(sceneId) ?? 0) > 0, `${sceneId} should have a path link`);
+  }
+  for (const [sceneId, degree] of degrees) {
+    assert.ok(degree <= 3, `${sceneId} should link at most three scenes`);
+  }
+});
+
+test("wild and secret local maps are restricted to explicit paths", () => {
+  assert.match(gridMapsSource, /export const GRID_NAVIGATION_VERSION = 4;/);
+  assert.match(gridMapsSource, /function isLocalPathRestricted/);
+  assert.match(gridMapsSource, /location\.type === "wild" \|\| location\.type === "secret"/);
+  assert.match(gridMapsSource, /walkable: !pathRestricted/);
+  assert.match(gridMapsSource, /walkable: Boolean\(poi\) \|\| \(!isBlocked && \(isRoad \|\|/);
+  assert.match(gridMapsSource, /function createCardinalLineCoords/);
+  assert.match(gridMapsSource, /function findNearestWalkableMapCoord/);
+  assert.match(explorePanelSource, /getLocationEntryScene\(nextLocation\)/);
+});
+
+test("combat records and restores the pre-battle return context", () => {
+  assert.match(combatEngineSource, /returnContext: createCombatReturnContext\(game\)/);
+  assert.match(combatEngineSource, /function restoreCombatReturnContext/);
+  assert.match(combatEngineSource, /restoreCombatReturnContext\(game, combat\)/);
+  assert.match(combatEngineSource, /restoreCombatReturnContext\(game, preparedCombat\)/);
+  assert.match(saveSource, /returnContext: normalizeCombatReturnContext\(combat\.returnContext\)/);
+});
+
+test("combat defeat and new saves use configured entry scenes instead of a stale gate id", () => {
+  assert.match(combatEngineSource, /function getDefeatReturnWorld/);
+  assert.match(combatEngineSource, /const entryScene = getLocationEntryScene\(town\)/);
+  assert.doesNotMatch(combatEngineSource, /sceneId:\s*"gate"/);
+  assert.match(stateSource, /const initialScene = getLocationEntryScene\(initialLocation\)/);
+  assert.doesNotMatch(stateSource, /sceneId:\s*"gate"/);
+});
+
+test("combat exit returns the UI to explore and the matching map layer", () => {
+  assert.match(gameScreenSource, /wasInCombatRef/);
+  assert.match(gameScreenSource, /setActiveModule\("explore"\)/);
+  assert.match(gameScreenSource, /setMapView\(activeMapId === WORLD_GRID_MAP_ID \? "world" : "location"\)/);
+  assert.match(gameScreenSource, /syncCombat\(null\)/);
+});
+
+test("combat actor layout keeps the player side left and enemy side right", () => {
+  const allyColumnIndex = combatViewSource.indexOf('ActorColumn side="ally"');
+  const enemyColumnIndex = combatViewSource.indexOf('ActorColumn side="enemy"');
+  assert.ok(allyColumnIndex >= 0, "ally actor column should be rendered");
+  assert.ok(enemyColumnIndex > allyColumnIndex, "enemy actor column should render after ally column");
+  assert.match(combatViewSource, /actor-column-\$\{side\}/);
+  assert.match(styleSource, /\.combat-columns\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*minmax\(0,\s*1fr\)/);
+  assert.doesNotMatch(styleSource, /\.combat-columns\s*\{\s*grid-template-columns:\s*1fr;\s*\}/);
+});
+
 test("12x grid zoom keeps visible cell rendering near the viewport", () => {
   assert.match(explorePanelSource, /const GRID_MAP_MAX_SCALE = 12;/);
   assert.match(explorePanelSource, /function getVisibleGridRectFromViewport/);
@@ -264,6 +337,28 @@ test("local scene click opens place panel before shop or task dialogs", () => {
   assert.match(localMarkerMatch[0], /if \(npc\.fixed\) \{\s*return;\s*\}/);
   assert.doesNotMatch(localMarkerMatch[0], /detail: scene\.type/);
   assert.doesNotMatch(localMarkerMatch[0], /detail: npc\.title/);
+});
+
+test("grid maps use the unified HUD header without visible debug tools", () => {
+  const gridMapPanelMatch = explorePanelSource.match(/function GridMapPanel[\s\S]*?function ExploreMapHeader/);
+  assert.ok(gridMapPanelMatch, "GridMapPanel should be followed by the shared map header component");
+  assert.match(explorePanelSource, /function ExploreMapHeader/);
+  assert.match(explorePanelSource, /getWorldMapHeaderSubtitle/);
+  assert.match(explorePanelSource, /getLocalMapHeaderSubtitle/);
+  assert.match(explorePanelSource, /const localNpcCount = getNpcsForLocation\(location\.id, game\.world\.npcs\)\.length/);
+  assert.match(explorePanelSource, /function getLocalPeopleLabel/);
+  assert.match(explorePanelSource, /locationType === "city" \|\| locationType === "town" \? "城镇人物" : "此地人物"/);
+  assert.match(explorePanelSource, /城镇人物/);
+  assert.match(explorePanelSource, /此地人物/);
+  assert.doesNotMatch(gridMapPanelMatch[0], /<MapHeader/);
+  assert.doesNotMatch(gridMapPanelMatch[0], /className="map-controls"/);
+  assert.doesNotMatch(gridMapPanelMatch[0], /onToggleDebug/);
+  assert.doesNotMatch(gridMapPanelMatch[0], /onRunSelfTest/);
+  assert.doesNotMatch(gridMapPanelMatch[0], /onOpenNpcRoster/);
+  assert.doesNotMatch(gridMapPanelMatch[0], /GridDebugOverlay/);
+  assert.doesNotMatch(gridMapPanelMatch[0], /GridDebugReadout/);
+  assert.match(styleSource, /\.map-hud-header/);
+  assert.match(styleSource, /\.town-npc-button[\s\S]*min-height: 42px/);
 });
 
 test("equipment crafting and reforge logic consume costs and preserve lock limits", () => {

@@ -50,6 +50,12 @@ function skillHasUsefulTarget(skill: SkillConfig, actor: CombatActor, combat: Co
 
 export function chooseAiAction(actor: CombatActor, combat: CombatState): AiChoice {
   const legalSkills = getSkillsForUser(actor.kind, actor.skillIds).filter((skill) => {
+    if ((skill.id === "basic_strike" || skill.id === "bite") && (actor.basicAttackDisabledActions ?? 0) > 0) {
+      return false;
+    }
+    if (skill.id !== "basic_strike" && skill.id !== "bite" && (actor.skillDisabledActions ?? 0) > 0) {
+      return false;
+    }
     return actor.spirit >= skill.spiritCost && skillHasUsefulTarget(skill, actor, combat);
   });
 

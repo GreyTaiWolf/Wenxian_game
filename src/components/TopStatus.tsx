@@ -44,9 +44,10 @@ export function TopStatus({ game, onExit }: { game: GameState; onExit: () => voi
           <GameIcon name="system-spirit-field" size={15} />
           天气 {formatRegionWeather(game.world.weather, game.world.regionId)}
         </span>
-      </div>
-      <div className="status-meter-grid">
-        <StatusMeter icon="resource-life" label="寿元" value={Number(game.player.age.toFixed(2))} max={game.player.lifespan} tone="gold" />
+        <span>
+          <GameIcon name="resource-life" size={15} />
+          寿元 {Number(game.player.age.toFixed(2))}/{game.player.lifespan}
+        </span>
       </div>
       <GameSettingsDialog game={game} open={settingsOpen} onOpenChange={setSettingsOpen} onExitToMenu={onExit} />
     </header>
@@ -64,36 +65,4 @@ function getMindLabel(value: number): string {
     return "波动";
   }
   return "紊乱";
-}
-
-function StatusMeter({
-  icon,
-  label,
-  value,
-  max,
-  tone,
-}: {
-  icon: "resource-life" | "resource-spirit";
-  label: string;
-  value: number;
-  max: number;
-  tone: "primary" | "gold";
-}) {
-  const percent = Math.max(0, Math.min(100, Math.floor((value / Math.max(1, max)) * 100)));
-  return (
-    <div className={`status-meter ${tone}`}>
-      <div className="status-meter-label">
-        <span>
-          <GameIcon name={icon} size={13} />
-          {label}
-        </span>
-        <strong>
-          {value}/{max}
-        </strong>
-      </div>
-      <div className="status-meter-track">
-        <div style={{ width: `${percent}%` }} />
-      </div>
-    </div>
-  );
 }
