@@ -1,5 +1,6 @@
 export type PrimaryModule = "cultivation" | "inventory" | "explore" | "cave" | "sect";
 export type UnlockKey = PrimaryModule | "foundationSkills" | "pet" | "companion";
+export type QuestStatus = "available" | "accepted" | "completed";
 export type ActorKind = "player" | "companion" | "enemyCultivator" | "pet" | "beast";
 export type SkillCategory = "cultivator" | "beast";
 export type TargetType = "enemySingle" | "enemyAll" | "allySingle" | "allyAll" | "self";
@@ -208,8 +209,9 @@ export interface InventoryState {
 }
 
 export interface QuestState {
-  status: "available" | "accepted" | "completed";
+  status: QuestStatus;
   progress: number;
+  objectiveProgress: Record<string, number>;
 }
 
 export interface Vector2 {

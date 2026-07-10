@@ -4,6 +4,7 @@ import { itemGradeOrder, normalizeItemId } from "../data/items";
 import { normalizeCaveState } from "./cave";
 import { createDefaultPassiveState, createDefaultWorldTime, normalizeCalendarDate } from "./time";
 import { createEquipmentInstance, normalizeInventoryState } from "./equipment";
+import { normalizeQuestStates } from "./quests";
 import { createNewGame, getDefaultDodge, normalizePlayerState, normalizeStats } from "./state";
 
 export const SAVE_KEY = "xiuxian-text-rpg-save-slots-v1";
@@ -103,6 +104,7 @@ function normalizeSlot(slot: SaveSlot | null | undefined): SaveSlot | null {
       },
       world: {
         ...slot.game.world,
+        tasks: normalizeQuestStates(slot.game.world?.tasks),
         calendar: normalizeCalendarDate(slot.game.world?.calendar),
         time: { ...createDefaultWorldTime(), ...(slot.game.world as GameState["world"] | undefined)?.time },
         passive: { ...createDefaultPassiveState(), ...(slot.game.world as GameState["world"] | undefined)?.passive },

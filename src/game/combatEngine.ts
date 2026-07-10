@@ -4,6 +4,7 @@ import { getSkill } from "../data/skills";
 import type { CombatActor, CombatState, GameState, ItemAffix, SkillConfig, TargetType } from "../types";
 import { chooseAiAction } from "./ai";
 import { getActiveEquipmentAffixes, getEffectiveStats } from "./equipment";
+import { recordQuestEvent } from "./quests";
 import { addItems, addRewards, appendLog } from "./state";
 import { advanceTime } from "./time";
 
@@ -416,7 +417,8 @@ function settleCombat(game: GameState, combat: CombatState): GameState {
     return { ...game, combat };
   }
   if (result === "victory") {
-    const rewarded = addRewards({ ...game, combat: undefined }, combat.rewards);
+    const withQuestProgress = recordDefeatedEnemyProgress({ ...game, combat: undefined }, combat);
+    const rewarded = addRewards(withQuestProgress, combat.rewards);
     const recovered = applyBattleEndRecover(rewarded, combat);
     return appendLog(
       {
@@ -437,6 +439,13 @@ function settleCombat(game: GameState, combat: CombatState): GameState {
       },
     },
     "队伍气血耗尽，你退回最近城镇调息。本场奖励未获得。",
+  );
+}
+
+function recordDefeatedEnemyProgress(game: GameState, combat: CombatState): GameState {
+  return getEnemyGroup(combat.groupId).enemies.reduce(
+    (current, enemy) => recordQuestEvent(current, { type: "kill", targetId: enemy.templateId, amount: enemy.count }),
+    game,
   );
 }
 

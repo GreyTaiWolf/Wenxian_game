@@ -1,8 +1,13 @@
 import { tasks } from "../data/world";
+import { getQuestAvailability, getQuestProgress, getQuestStatusLabel } from "../game/quests";
 import type { GameState } from "../types";
 import { GameIcon } from "./GameIcon";
 
 export default function SectPanel({ game }: { game: GameState }) {
+  const visibleTasks = tasks.filter(
+    (task) => (!task.regionId || task.regionId === game.world.regionId) && getQuestAvailability(game, task) !== "locked",
+  );
+
   return (
     <section className="module-panel">
       <div className="sub-tabs">
@@ -46,15 +51,22 @@ export default function SectPanel({ game }: { game: GameState }) {
           </h2>
           <span>前往青云城任务榜完成</span>
         </div>
-        {tasks.map((task) => (
-          <div className="task-row" key={task.id}>
-            <div>
-              <strong>{task.title}</strong>
-              <small>{task.requirementText}</small>
+        {visibleTasks.map((task) => {
+          const availability = getQuestAvailability(game, task);
+          const progress = getQuestProgress(game, task);
+          return (
+            <div className="task-row" key={task.id}>
+              <div>
+                <strong>{task.title}</strong>
+                <small>{task.requirementText}</small>
+                <small>
+                  目标进度 {progress.current}/{progress.target}
+                </small>
+              </div>
+              <span className="done-tag">{getQuestStatusLabel(availability)}</span>
             </div>
-            <span className="done-tag">{game.world.tasks[task.id]?.status ?? "未接取"}</span>
-          </div>
-        ))}
+          );
+        })}
       </section>
     </section>
   );

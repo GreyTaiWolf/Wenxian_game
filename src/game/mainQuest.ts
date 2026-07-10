@@ -6,6 +6,7 @@ import {
 } from "../data/mainQuest";
 import { getRealm, isRealmAtLeast, realms } from "../data/progression";
 import type { GameState } from "../types";
+import { getQuestProgress, getTask } from "./quests";
 
 export interface MainQuestProgress {
   current: number;
@@ -66,13 +67,13 @@ export function isMainQuestStageComplete(game: GameState, stageId: MainQuestStag
     case "accept_herb_commission":
       return getTaskStatus(game, "collect_qi_grass") !== "available" || reachedQiMiddle;
     case "gather_qi_grass":
-      return getTaskStatus(game, "collect_qi_grass") === "completed" || (game.inventory.items.qi_grass ?? 0) >= 2 || reachedQiMiddle;
+      return getTaskStatus(game, "collect_qi_grass") === "completed" || areTaskObjectivesComplete(game, "collect_qi_grass") || reachedQiMiddle;
     case "turn_in_herb_commission":
       return getTaskStatus(game, "collect_qi_grass") === "completed" || reachedQiMiddle;
     case "accept_black_wind_commission":
       return getTaskStatus(game, "hunt_black_wind") !== "available" || reachedQiMiddle;
     case "hunt_black_wind":
-      return getTaskStatus(game, "hunt_black_wind") === "completed" || (game.inventory.items.beast_bone ?? 0) >= 1 || reachedQiMiddle;
+      return getTaskStatus(game, "hunt_black_wind") === "completed" || areTaskObjectivesComplete(game, "hunt_black_wind") || reachedQiMiddle;
     case "turn_in_black_wind_commission":
       return getTaskStatus(game, "hunt_black_wind") === "completed" || reachedQiMiddle;
     case "breakthrough_qi_middle":
@@ -100,18 +101,14 @@ function getMainQuestStageProgress(game: GameState, stageId: MainQuestStageId): 
       return createProgress(game.player.cultivation > 0 ? 1 : 0, 1, game.player.cultivation > 0 ? "已完成首次聚气" : "完成一次聚气");
     case "accept_herb_commission":
       return createTaskStateProgress(game, "collect_qi_grass", "等待接取采药委托");
-    case "gather_qi_grass": {
-      const amount = Math.min(2, game.inventory.items.qi_grass ?? 0);
-      return createProgress(amount, 2, `凝气草 ${amount}/2`);
-    }
+    case "gather_qi_grass":
+      return createTaskObjectiveProgress(game, "collect_qi_grass", "采集凝气草");
     case "turn_in_herb_commission":
       return createProgress(getTaskStatus(game, "collect_qi_grass") === "completed" ? 1 : 0, 1, "返回任务榜交付凝气草");
     case "accept_black_wind_commission":
       return createTaskStateProgress(game, "hunt_black_wind", "等待接取黑风山委托");
-    case "hunt_black_wind": {
-      const amount = Math.min(1, game.inventory.items.beast_bone ?? 0);
-      return createProgress(amount, 1, `妖兽骨 ${amount}/1`);
-    }
+    case "hunt_black_wind":
+      return createTaskObjectiveProgress(game, "hunt_black_wind", "完成黑风山战斗目标");
     case "turn_in_black_wind_commission":
       return createProgress(getTaskStatus(game, "hunt_black_wind") === "completed" ? 1 : 0, 1, "返回任务榜交付妖兽骨");
     case "breakthrough_qi_middle": {
@@ -154,6 +151,17 @@ function createTaskStateProgress(game: GameState, taskId: string, availableLabel
   return createProgress(0, 1, availableLabel);
 }
 
+function createTaskObjectiveProgress(game: GameState, taskId: string, fallbackLabel: string): MainQuestProgress {
+  const task = getTask(taskId);
+  if (!task) {
+    return createProgress(0, 1, fallbackLabel);
+  }
+  const progress = getQuestProgress(game, task);
+  const pending = progress.objectives.find((objective) => !objective.complete);
+  const label = pending ? `${pending.label} ${pending.current}/${pending.target}` : "任务目标已完成，返回任务榜交付";
+  return createProgress(progress.current, progress.target, label);
+}
+
 function createProgress(current: number, target: number, label: string): MainQuestProgress {
   const safeTarget = Math.max(1, target);
   const safeCurrent = Math.min(safeTarget, Math.max(0, current));
@@ -167,6 +175,11 @@ function createProgress(current: number, target: number, label: string): MainQue
 
 function getTaskStatus(game: GameState, taskId: string): "available" | "accepted" | "completed" {
   return game.world.tasks[taskId]?.status ?? "available";
+}
+
+function areTaskObjectivesComplete(game: GameState, taskId: string): boolean {
+  const task = getTask(taskId);
+  return task ? getQuestProgress(game, task).complete : false;
 }
 
 function getCompletedSouthRidgeTaskCount(game: GameState): number {

@@ -1,4 +1,4 @@
-import type { Cost, ItemAmount } from "../types";
+import type { Cost, EquipmentSlotId, ItemAmount, QuestStatus } from "../types";
 
 export type SceneActionKind =
   | "dialogue"
@@ -63,14 +63,57 @@ export interface ShopItem {
   regionId?: string;
 }
 
+interface QuestObjectiveBase {
+  id: string;
+  label: string;
+}
+
+export type QuestObjective =
+  | (QuestObjectiveBase & {
+      type: "gather";
+      itemId: string;
+      amount: number;
+      consumeOnComplete?: boolean;
+    })
+  | (QuestObjectiveBase & {
+      type: "kill";
+      targetId: string;
+      amount: number;
+    })
+  | (QuestObjectiveBase & {
+      type: "visit";
+      locationId: string;
+    })
+  | (QuestObjectiveBase & {
+      type: "talk";
+      actionId: string;
+    })
+  | (QuestObjectiveBase & {
+      type: "realm";
+      realmId: string;
+    })
+  | (QuestObjectiveBase & {
+      type: "equip";
+      slot: EquipmentSlotId;
+      itemId?: string;
+    });
+
+export type QuestPrerequisite =
+  | { type: "quest"; questId: string; status: Extract<QuestStatus, "accepted" | "completed"> }
+  | { type: "cultivation"; amount: number }
+  | { type: "realm"; realmId: string }
+  | { type: "region"; regionId: string }
+  | { type: "sect"; joined: boolean };
+
 export interface TaskConfig {
   id: string;
   regionId?: string;
+  chapter: string;
   title: string;
   description: string;
   requirementText: string;
-  requiredItems?: ItemAmount[];
-  requiredFlags?: string[];
+  prerequisites?: QuestPrerequisite[];
+  objectives: QuestObjective[];
   rewards: {
     spiritStones: number;
     contribution: number;
@@ -94,28 +137,72 @@ export const tasks: TaskConfig[] = [
   {
     id: "collect_qi_grass",
     regionId: "central",
+    chapter: "第一章 · 初入仙途",
     title: "采集凝气草",
     description: "宗门药房需要一批新鲜凝气草。",
     requirementText: "交付 凝气草 x2",
-    requiredItems: [{ itemId: "qi_grass", amount: 2 }],
+    prerequisites: [{ type: "cultivation", amount: 1 }],
+    objectives: [
+      {
+        id: "gather_qi_grass",
+        type: "gather",
+        itemId: "qi_grass",
+        amount: 2,
+        consumeOnComplete: true,
+        label: "备齐凝气草 x2",
+      },
+    ],
     rewards: { spiritStones: 90, contribution: 12, reputation: 3 },
   },
   {
     id: "hunt_black_wind",
     regionId: "central",
+    chapter: "第二章 · 山中试锋",
     title: "讨伐黑风山妖兽",
     description: "黑风山妖兽频繁袭扰商路。",
-    requirementText: "交付 妖兽骨 x1",
-    requiredItems: [{ itemId: "beast_bone", amount: 1 }],
+    requirementText: "击败山狼并交付 妖兽骨 x1",
+    prerequisites: [{ type: "quest", questId: "collect_qi_grass", status: "completed" }],
+    objectives: [
+      {
+        id: "kill_mountain_wolf",
+        type: "kill",
+        targetId: "mountain_wolf",
+        amount: 1,
+        label: "击败山狼 x1",
+      },
+      {
+        id: "gather_beast_bone",
+        type: "gather",
+        itemId: "beast_bone",
+        amount: 1,
+        consumeOnComplete: true,
+        label: "备齐妖兽骨 x1",
+      },
+    ],
     rewards: { spiritStones: 120, contribution: 18, reputation: 5 },
   },
   {
     id: "deliver_letter",
     regionId: "central",
+    chapter: "第二章 · 商路余波",
     title: "送信落霞镇",
     description: "将宗门信笺带给落霞镇执事。",
     requirementText: "到落霞镇完成对话",
-    requiredFlags: ["visited_luoxia"],
+    prerequisites: [{ type: "quest", questId: "collect_qi_grass", status: "completed" }],
+    objectives: [
+      {
+        id: "visit_luoxia_town",
+        type: "visit",
+        locationId: "luoxia_town",
+        label: "抵达落霞镇",
+      },
+      {
+        id: "talk_to_luoxia_steward",
+        type: "talk",
+        actionId: "finish_delivery",
+        label: "拜访驿亭执事",
+      },
+    ],
     rewards: {
       spiritStones: 65,
       contribution: 8,
@@ -126,10 +213,21 @@ export const tasks: TaskConfig[] = [
   {
     id: "collect_miasma_flower",
     regionId: "south_ridge",
+    chapter: "第七章 · 南疆风云",
     title: "采瘴毒花",
     description: "巫妖盟药师需要新鲜瘴毒花炼制避瘴药。",
     requirementText: "交付 瘴毒花 x2",
-    requiredItems: [{ itemId: "miasma_flower", amount: 2 }],
+    prerequisites: [{ type: "realm", realmId: "foundation_early" }],
+    objectives: [
+      {
+        id: "gather_miasma_flower",
+        type: "gather",
+        itemId: "miasma_flower",
+        amount: 2,
+        consumeOnComplete: true,
+        label: "备齐瘴毒花 x2",
+      },
+    ],
     rewards: {
       spiritStones: 180,
       contribution: 16,
@@ -140,10 +238,28 @@ export const tasks: TaskConfig[] = [
   {
     id: "purge_baicao_vines",
     regionId: "south_ridge",
+    chapter: "第七章 · 南疆风云",
     title: "清剿妖藤",
     description: "百草谷深处妖藤疯长，已经缠伤数名采药人。",
-    requirementText: "交付 妖丹碎片 x1",
-    requiredItems: [{ itemId: "demon_core_shard", amount: 1 }],
+    requirementText: "击败妖藤并交付 妖丹碎片 x1",
+    prerequisites: [{ type: "realm", realmId: "foundation_early" }],
+    objectives: [
+      {
+        id: "kill_venom_vine",
+        type: "kill",
+        targetId: "venom_vine",
+        amount: 1,
+        label: "击败妖藤 x1",
+      },
+      {
+        id: "gather_demon_core_shard",
+        type: "gather",
+        itemId: "demon_core_shard",
+        amount: 1,
+        consumeOnComplete: true,
+        label: "备齐妖丹碎片 x1",
+      },
+    ],
     rewards: {
       spiritStones: 220,
       contribution: 20,
@@ -154,10 +270,28 @@ export const tasks: TaskConfig[] = [
   {
     id: "patrol_beast_mountain",
     regionId: "south_ridge",
+    chapter: "第七章 · 南疆风云",
     title: "巡查万妖山",
     description: "万妖山巡山兽躁动，巫妖盟需要外来修士探明兽群动向。",
-    requirementText: "交付 妖兽骨 x2",
-    requiredItems: [{ itemId: "beast_bone", amount: 2 }],
+    requirementText: "击败山魈并交付 妖兽骨 x2",
+    prerequisites: [{ type: "realm", realmId: "foundation_early" }],
+    objectives: [
+      {
+        id: "kill_mountain_yao",
+        type: "kill",
+        targetId: "mountain_yao",
+        amount: 1,
+        label: "击败山魈 x1",
+      },
+      {
+        id: "gather_patrol_beast_bone",
+        type: "gather",
+        itemId: "beast_bone",
+        amount: 2,
+        consumeOnComplete: true,
+        label: "备齐妖兽骨 x2",
+      },
+    ],
     rewards: {
       spiritStones: 260,
       contribution: 24,
@@ -168,10 +302,28 @@ export const tasks: TaskConfig[] = [
   {
     id: "investigate_tide_cave",
     regionId: "south_ridge",
+    chapter: "第七章 · 南疆风云",
     title: "探查潮音秘洞",
     description: "归潮礁岛潮音异常，海市散修怀疑秘洞守卫苏醒。",
-    requirementText: "交付 潮生贝 x2",
-    requiredItems: [{ itemId: "tide_shell", amount: 2 }],
+    requirementText: "击败潮汐守卫并交付 潮生贝 x2",
+    prerequisites: [{ type: "realm", realmId: "foundation_early" }],
+    objectives: [
+      {
+        id: "kill_tide_guard",
+        type: "kill",
+        targetId: "tide_guard",
+        amount: 2,
+        label: "击败潮汐守卫 x2",
+      },
+      {
+        id: "gather_tide_shell",
+        type: "gather",
+        itemId: "tide_shell",
+        amount: 2,
+        consumeOnComplete: true,
+        label: "备齐潮生贝 x2",
+      },
+    ],
     rewards: {
       spiritStones: 300,
       contribution: 28,
