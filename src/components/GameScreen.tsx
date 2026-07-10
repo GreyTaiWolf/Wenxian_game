@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "../mainQuest.css";
 import { attemptBreakthrough, cultivate, appendLog } from "../game/state";
 import type { GameState, PrimaryModule } from "../types";
 import { BottomNav, isModuleUnlocked } from "./BottomNav";
