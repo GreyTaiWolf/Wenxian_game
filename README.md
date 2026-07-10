@@ -48,14 +48,15 @@ Wenxian_game/
 ├─ src/
 │  ├─ components/     # UI 组件与轻交互
 │  ├─ data/           # 配置数据（境界、技能、物品、敌人、地图、主线等）
-│  ├─ game/           # 核心游戏逻辑（状态、战斗、存档、AI、主线推导）
+│  ├─ game/           # 核心游戏逻辑（状态、战斗、任务、存档、AI、主线推导）
 │  ├─ types.ts        # 共享类型定义与状态结构
 │  └─ styles.css      # 全局样式与主题变量
 ├─ docs/
 │  ├─ GAME_DESIGN.md          # 玩法与系统设计文档
 │  ├─ BALANCE.md              # 数值、公式与调参文档
 │  ├─ DEVELOPMENT_ROADMAP.md  # 手游产品、工程、测试与发布执行路线
-│  └─ MAIN_QUEST.md           # 主线阶段、判定与回归清单
+│  ├─ MAIN_QUEST.md           # 主线阶段、判定与回归清单
+│  └─ QUEST_SYSTEM.md         # 通用任务目标、前置、结算与迁移规则
 ├─ package.json
 └─ README.md
 ```
@@ -65,6 +66,7 @@ Wenxian_game/
 yarn dev      # 本地开发（Vite）
 yarn build    # TypeScript 检查 + 生产构建
 yarn preview  # 本地预览构建产物
+npm run android:apk:debug  # 构建 Android 调试包（需已安装 Android SDK）
 ```
 
 ## 部署方式
@@ -76,18 +78,21 @@ yarn preview  # 本地预览构建产物
 仓库还包含：
 - `Verify game build`：在 PR 与 `main` 提交时执行依赖锁定安装、TypeScript 检查和生产构建；
 - `Deploy preview to GitHub Pages`：在 `main` 更新后构建并发布 GitHub Pages。
+- `Build Android test APK`：在面向 `main` 的 PR 或手动触发时构建 `debug APK`；完成后可在该 Actions 运行记录的 `Artifacts` 中下载 `wenxian-android-debug-apk`。
 
 ## 当前完成内容
 - 已完成移动端优先 UI 基础框架与核心信息层。
 - 已完成修炼、突破、背包、历练、大世界探索、回合制战斗、宗门、洞府、存档等主系统基础闭环。
 - 已开放中州与南疆主要地点；东海、西漠、北境已在大世界预留。
 - 已建立数据驱动的当前主线目标，串联聚气、任务、采集、战斗、突破、入宗、筑基和南疆。
+- 已统一普通任务的采集、击杀、到达、对话、境界与穿戴目标契约，并将接取/结算移入规则层。
 - 已建立 PR/主分支自动构建门禁。
 - 已建立并持续维护设计、数值、主线与开发路线文档：
   - `docs/GAME_DESIGN.md`
   - `docs/BALANCE.md`
   - `docs/DEVELOPMENT_ROADMAP.md`
   - `docs/MAIN_QUEST.md`
+  - `docs/QUEST_SYSTEM.md`
 
 ## 开发路线
 
@@ -95,9 +100,10 @@ yarn preview  # 本地预览构建产物
 
 - `docs/DEVELOPMENT_ROADMAP.md`
 - `docs/MAIN_QUEST.md`
+- `docs/QUEST_SYSTEM.md`
 
 ## 下一步计划
-- 完成中州任务目标模型与新档至筑基初期端到端验收。
+- 完成新档至筑基初期端到端验收。
 - 落地普通怪、精英与 Boss 的统一掉落表和首次奖励规则。
 - 完成装备来源、对比、出售/分解与构筑反馈闭环。
 - 深化南疆悬赏、筑基材料、秘境与洞府资源路线。
@@ -112,3 +118,4 @@ yarn preview  # 本地预览构建产物
 - `docs/BALANCE.md`
 - `docs/DEVELOPMENT_ROADMAP.md`
 - `docs/MAIN_QUEST.md`
+- `docs/QUEST_SYSTEM.md`

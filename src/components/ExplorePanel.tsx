@@ -26,9 +26,17 @@ import {
   runGridNavigationSelfTest,
   worldPositionToGridCoord,
 } from "../game/gridNavigation";
-import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet, removeItems } from "../game/state";
+import {
+  acceptQuest,
+  completeQuest,
+  getQuestAvailability,
+  getQuestPrerequisiteHint,
+  getQuestProgress,
+  recordQuestEvent,
+} from "../game/quests";
+import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet } from "../game/state";
 import { advanceTime } from "../game/time";
-import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig, QuestState } from "../types";
+import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig } from "../types";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
 
 const worldMapSrc = new URL("../../World_map.png", import.meta.url).href;
@@ -1082,7 +1090,7 @@ function applyProvinceTravelChange(game: GameState, province: WorldProvince, por
         ? getDefaultGridCoord(nextRegionMapId)
         : null;
 
-  return {
+  return recordQuestEvent({
     ...game,
     world: {
       ...game.world,
@@ -1097,12 +1105,12 @@ function applyProvinceTravelChange(game: GameState, province: WorldProvince, por
         positions: nextRegionMapId && nextRegionCoord ? { ...game.world.navigation.positions, [nextRegionMapId]: nextRegionCoord } : game.world.navigation.positions,
       },
     },
-  };
+  }, { type: "visit", targetId: nextLocation.id });
 }
 
 function applyLocationChange(game: GameState, locationId: string): GameState {
   const nextLocation = getLocation(game.world.regionId, locationId);
-  return {
+  return recordQuestEvent({
     ...game,
     world: {
       ...game.world,
@@ -1111,7 +1119,7 @@ function applyLocationChange(game: GameState, locationId: string): GameState {
       lastTownId: nextLocation.type === "city" || nextLocation.type === "town" ? nextLocation.id : game.world.lastTownId,
       sceneMessage: `抵达 ${nextLocation.name}。`,
     },
-  };
+  }, { type: "visit", targetId: locationId });
 }
 
 function getTravelStartMessage(intent: TravelIntent, target: GridCoord, adjusted: boolean): string {
@@ -1187,23 +1195,8 @@ function getActionIconName(kind: SceneAction["kind"]): GameIconName {
 
 function handleAction(game: GameState, action: SceneAction): GameState {
   if (action.kind === "dialogue") {
-    const visitedLuoxia = game.world.locationId === "luoxia_town";
     return appendLog(
-      {
-        ...game,
-        world: {
-          ...game.world,
-          tasks: visitedLuoxia
-            ? {
-                ...game.world.tasks,
-                deliver_letter: {
-                  status: game.world.tasks.deliver_letter?.status ?? "available",
-                  progress: 1,
-                },
-              }
-            : game.world.tasks,
-        },
-      },
+      recordQuestEvent(game, { type: "talk", targetId: action.id }),
       action.text ?? "你与此地修士交谈片刻，记下一些传闻。",
     );
   }
@@ -1285,57 +1278,9 @@ function getGradeNameClass(item: ItemConfig): string {
 }
 
 function TaskBoard({ game, onChange }: { game: GameState; onChange: ExploreChange }) {
-  const visibleTasks = tasks.filter((task) => !task.regionId || task.regionId === game.world.regionId);
-
-  function accept(taskId: string) {
-    const nextTask: QuestState = { status: "accepted", progress: game.world.tasks[taskId]?.progress ?? 0 };
-    onChange(
-      appendLog(
-        {
-          ...game,
-          world: {
-            ...game.world,
-            tasks: { ...game.world.tasks, [taskId]: nextTask },
-          },
-        },
-        "你接下宗门任务。",
-      ),
-    );
-  }
-
-  function complete(taskId: string) {
-    const task = tasks.find((item) => item.id === taskId);
-    if (!task) {
-      return;
-    }
-    const hasItems = task.requiredItems?.every((item) => (game.inventory.items[item.itemId] ?? 0) >= item.amount) ?? true;
-    const hasFlags = task.requiredFlags?.every((flag) => flag === "visited_luoxia" && (game.world.tasks.deliver_letter?.progress ?? 0) > 0) ?? true;
-    if (!hasItems || !hasFlags) {
-      onChange(appendLog(game, "任务条件尚未完成。"));
-      return;
-    }
-    const paid = removeItems(game, task.requiredItems);
-    const rewarded = addItems(
-      {
-        ...paid,
-        player: {
-          ...paid.player,
-          spiritStones: paid.player.spiritStones + task.rewards.spiritStones,
-        },
-        world: {
-          ...paid.world,
-          sectContribution: paid.world.sectContribution + task.rewards.contribution,
-          sectReputation: paid.world.sectReputation + task.rewards.reputation,
-          tasks: {
-            ...paid.world.tasks,
-            [taskId]: { status: "completed", progress: 1 },
-          },
-        },
-      },
-      task.rewards.items,
-    );
-    onChange(appendLog(rewarded, `完成任务《${task.title}》，贡献 +${task.rewards.contribution}。`));
-  }
+  const regionTasks = tasks.filter((task) => !task.regionId || task.regionId === game.world.regionId);
+  const visibleTasks = regionTasks.filter((task) => getQuestAvailability(game, task) !== "locked");
+  const nextLockedTask = regionTasks.find((task) => getQuestAvailability(game, task) === "locked");
 
   return (
     <section className="task-board">
@@ -1344,20 +1289,39 @@ function TaskBoard({ game, onChange }: { game: GameState; onChange: ExploreChang
           <GameIcon name="combat-log" size={18} />
           任务榜
         </h2>
-        <span>{visibleTasks.length} 件</span>
+        <span>{visibleTasks.length} 件已解锁</span>
       </div>
+      {visibleTasks.length === 0 && nextLockedTask ? (
+        <p className="quest-lock-notice">{getQuestPrerequisiteHint(game, nextLockedTask)}</p>
+      ) : null}
       {visibleTasks.map((task) => {
-        const state = game.world.tasks[task.id]?.status ?? "available";
+        const availability = getQuestAvailability(game, task);
+        const progress = getQuestProgress(game, task);
         return (
           <div className="task-row" key={task.id}>
-            <div>
+            <div className="task-copy">
+              <small className="task-chapter">{task.chapter}</small>
               <strong>{task.title}</strong>
               <small>{task.description}</small>
-              <small>需求：{task.requirementText}</small>
+              <ul className="quest-objective-list">
+                {progress.objectives.map((objective) => (
+                  <li className={objective.complete ? "complete" : ""} key={objective.id}>
+                    <span>{objective.complete ? "已完成" : "进行中"}</span>
+                    {objective.label}
+                    <em>
+                      {objective.current}/{objective.target}
+                    </em>
+                  </li>
+                ))}
+              </ul>
             </div>
-            {state === "available" ? <button onClick={() => accept(task.id)}>接取</button> : null}
-            {state === "accepted" ? <button onClick={() => complete(task.id)}>完成</button> : null}
-            {state === "completed" ? <span className="done-tag">已完成</span> : null}
+            {availability === "available" ? <button onClick={() => onChange((current) => acceptQuest(current, task.id))}>接取</button> : null}
+            {availability === "accepted" ? (
+              <button disabled={!progress.complete} onClick={() => onChange((current) => completeQuest(current, task.id))}>
+                {progress.complete ? "提交" : `${progress.current}/${progress.target}`}
+              </button>
+            ) : null}
+            {availability === "completed" ? <span className="done-tag">已完成</span> : null}
           </div>
         );
       })}

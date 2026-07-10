@@ -298,6 +298,78 @@ small {
   background: rgba(11, 17, 27, 0.46);
 }
 
+.task-row {
+  align-items: start;
+}
+
+.task-copy {
+  gap: 6px !important;
+}
+
+.task-chapter {
+  color: var(--gold) !important;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.quest-objective-list {
+  display: grid;
+  gap: 5px;
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quest-objective-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  color: #c8d7d0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.quest-objective-list li > span {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: var(--muted);
+  background: rgba(148, 163, 184, 0.08);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.quest-objective-list li.complete {
+  color: #baf7da;
+}
+
+.quest-objective-list li.complete > span {
+  border-color: rgba(52, 211, 153, 0.3);
+  color: var(--success);
+  background: rgba(52, 211, 153, 0.09);
+}
+
+.quest-objective-list em {
+  color: var(--primary-strong);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.quest-lock-notice {
+  margin: 0;
+  border: 1px dashed rgba(246, 196, 83, 0.25);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--muted);
+  background: rgba(246, 196, 83, 0.05);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .slot-row div,
 .item-row div,
 .task-row div {
@@ -2574,6 +2646,11 @@ button.scene-hotspot-button:focus-visible {
   min-height: 36px;
   padding: 0 10px;
   white-space: nowrap;
+}
+
+.task-row button {
+  min-height: 42px;
+  align-self: center;
 }
 
 .done-tag {
