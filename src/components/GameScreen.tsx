@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "../mainQuest.css";
 import { attemptBreakthrough, cultivate, appendLog } from "../game/state";
 import type { GameState, PrimaryModule } from "../types";
 import { BottomNav, isModuleUnlocked } from "./BottomNav";
@@ -7,6 +8,7 @@ import CombatView from "./CombatView";
 import CultivationPanel from "./CultivationPanel";
 import ExplorePanel from "./ExplorePanel";
 import InventoryPanel from "./InventoryPanel";
+import MainQuestCard from "./MainQuestCard";
 import SectPanel from "./SectPanel";
 import { TopStatus } from "./TopStatus";
 
@@ -32,6 +34,7 @@ export default function GameScreen({
   return (
     <main className="game-shell">
       <TopStatus game={game} onExit={onExit} />
+      {!game.combat ? <MainQuestCard game={game} onOpenModule={selectModule} /> : null}
       <section className="content-area">
         {game.combat ? (
           <CombatView game={game} onChange={onChange} />

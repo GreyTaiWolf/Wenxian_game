@@ -47,13 +47,15 @@ yarn dev
 Wenxian_game/
 ├─ src/
 │  ├─ components/     # UI 组件与轻交互
-│  ├─ data/           # 配置数据（境界、技能、物品、敌人、地图等）
-│  ├─ game/           # 核心游戏逻辑（状态、战斗、存档、AI）
+│  ├─ data/           # 配置数据（境界、技能、物品、敌人、地图、主线等）
+│  ├─ game/           # 核心游戏逻辑（状态、战斗、存档、AI、主线推导）
 │  ├─ types.ts        # 共享类型定义与状态结构
 │  └─ styles.css      # 全局样式与主题变量
 ├─ docs/
-│  ├─ GAME_DESIGN.md  # 玩法与系统设计文档
-│  └─ BALANCE.md      # 数值、公式与调参文档
+│  ├─ GAME_DESIGN.md          # 玩法与系统设计文档
+│  ├─ BALANCE.md              # 数值、公式与调参文档
+│  ├─ DEVELOPMENT_ROADMAP.md  # 手游产品、工程、测试与发布执行路线
+│  └─ MAIN_QUEST.md           # 主线阶段、判定与回归清单
 ├─ package.json
 └─ README.md
 ```
@@ -71,23 +73,42 @@ yarn preview  # 本地预览构建产物
 2. 将 `dist/` 发布到静态服务（如 Nginx、Vercel、Netlify、GitHub Pages 等）；
 3. 配置 SPA 回退（history fallback）到 `index.html`（若平台需要）。
 
+仓库还包含：
+- `Verify game build`：在 PR 与 `main` 提交时执行依赖锁定安装、TypeScript 检查和生产构建；
+- `Deploy preview to GitHub Pages`：在 `main` 更新后构建并发布 GitHub Pages。
+
 ## 当前完成内容
 - 已完成移动端优先 UI 基础框架与核心信息层。
 - 已完成修炼、突破、背包、历练、大世界探索、回合制战斗、宗门、洞府、存档等主系统基础闭环。
 - 已开放中州与南疆主要地点；东海、西漠、北境已在大世界预留。
-- 已建立并持续维护设计文档与数值文档：
+- 已建立数据驱动的当前主线目标，串联聚气、任务、采集、战斗、突破、入宗、筑基和南疆。
+- 已建立 PR/主分支自动构建门禁。
+- 已建立并持续维护设计、数值、主线与开发路线文档：
   - `docs/GAME_DESIGN.md`
   - `docs/BALANCE.md`
+  - `docs/DEVELOPMENT_ROADMAP.md`
+  - `docs/MAIN_QUEST.md`
+
+## 开发路线
+
+完整执行顺序、里程碑、迭代拆分、测试策略、存档安全、PWA/原生封装和发布标准请阅读：
+
+- `docs/DEVELOPMENT_ROADMAP.md`
+- `docs/MAIN_QUEST.md`
 
 ## 下一步计划
-- 扩展更高境界与对应成长曲线（筑基后续至结丹/元婴）。
-- 丰富宗门系统（藏经阁、兑换、职位、关系线）。
+- 完成中州任务目标模型与新档至筑基初期端到端验收。
+- 落地普通怪、精英与 Boss 的统一掉落表和首次奖励规则。
+- 完成装备来源、对比、出售/分解与构筑反馈闭环。
+- 深化南疆悬赏、筑基材料、秘境与洞府资源路线。
+- 丰富宗门系统（委托、藏经阁、兑换、职位、关系线）。
 - 深化洞府养成（灵田、炼丹、更多设施联动）。
-- 增加任务链与跨州剧情推进。
-- 持续扩展大世界州域内容（东海、西漠、北境内部地图与生态）。
-- 优化装备体系与战斗构筑深度。
+- 增加存档导入/导出、PWA 安装与离线能力。
+- 在炼气—筑基闭环通过质量门禁后扩展结丹与下一州域。
 
 ---
-如需了解详细玩法与数值细节，请优先阅读：
+如需了解详细玩法、数值与开发执行标准，请优先阅读：
 - `docs/GAME_DESIGN.md`
 - `docs/BALANCE.md`
+- `docs/DEVELOPMENT_ROADMAP.md`
+- `docs/MAIN_QUEST.md`
