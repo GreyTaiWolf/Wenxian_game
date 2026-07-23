@@ -31,5 +31,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Run gameplay tests
+        run: yarn test
+
       - name: Type-check and build
         run: yarn build

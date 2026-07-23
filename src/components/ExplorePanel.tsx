@@ -9,7 +9,6 @@ import {
   gridMaps,
 } from "../data/gridMaps";
 import { findGridDestinationZone, getGridDestinationZone, getGridDestinationZones, gridDestinationZones } from "../data/gridMapZones";
-import { REGION_TILE_MOVE_DAYS, WORLD_TILE_MOVE_DAYS } from "../data/time";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getRegionMapConfig, type RegionMapConfig } from "../data/regionMaps";
 import { getLocation, getRegion, getScene, shopItems, tasks, type LocationNode, type SceneAction, type SceneHotspot, type SceneNode } from "../data/world";
@@ -19,6 +18,8 @@ import {
   findNearestWalkableCell,
   findPathAStar,
   getGridCell,
+  getGridPathTravelHours,
+  getGridStepTravelHours,
   getNearestWalkableZoneCoord,
   getPathMovementSteps,
   gridCoordKey,
@@ -36,35 +37,27 @@ import {
 } from "../game/quests";
 import { addItems, addRewards, appendLog, joinSect, recruitCompanion, recruitPet } from "../game/state";
 import { advanceTime } from "../game/time";
-import type { GameState, GridCoord, GridDestinationZone, GridMapData, ItemConfig } from "../types";
+import { maybeQueueTravelEvent } from "../game/travelEvents";
+import type {
+  ActiveGridTravel,
+  GameState,
+  GridCoord,
+  GridDestinationZone,
+  GridMapData,
+  GridTravelIntent,
+  ItemConfig,
+} from "../types";
 import { GameIcon, getLocationIconName, type GameIconName } from "./GameIcon";
 
-const worldMapSrc = new URL("../../World_map.png", import.meta.url).href;
-const regionMapImages: Record<RegionMapConfig["imageKey"], string> = {
-  nanjiang: new URL("../../World_map_nanjiang2.png", import.meta.url).href,
-  zhongzhou: new URL("../../World_map_zhonzhou2.png", import.meta.url).href,
-};
 const sceneImages: Record<string, string> = {
   tian_xuan_gate: new URL("../../maps/tian_xuan_cheng_meng.png", import.meta.url).href,
 };
 const GRID_MOVEMENT_STEP_MS = 180;
+const SHOW_MAP_DEBUG_TOOLS = Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
 
 type ExploreView = "world" | "region" | "location";
 type ExploreChange = (next: GameState | ((prev: GameState) => GameState)) => void;
-type TravelIntent =
-  | { kind: "free" }
-  | { kind: "province"; province: WorldProvince }
-  | { kind: "locationPreview"; regionId: string; locationId: string }
-  | { kind: "location"; regionId: string; locationId: string };
-type LocationTravelIntent = Extract<TravelIntent, { kind: "locationPreview" | "location" }>;
-
-interface ActiveTravel {
-  mapId: string;
-  target: GridCoord;
-  path: GridCoord[];
-  intent: TravelIntent;
-  adjusted: boolean;
-}
+type LocationTravelIntent = Extract<GridTravelIntent, { kind: "locationPreview" | "location" }>;
 
 export default function ExplorePanel({ game, onChange }: { game: GameState; onChange: ExploreChange }) {
   const [view, setView] = useState<ExploreView>("world");
@@ -73,7 +66,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
   const [activeSceneHotspotId, setActiveSceneHotspotId] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugResult, setDebugResult] = useState<string | null>(null);
-  const [travel, setTravel] = useState<ActiveTravel | null>(null);
+  const travel = game.world.activeTravel;
   const region = getRegion(game.world.regionId);
   const location = getLocation(game.world.regionId, game.world.locationId);
   const scene = getScene(game.world.regionId, game.world.locationId, game.world.sceneId);
@@ -94,18 +87,30 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
 
     if (travel.path.length === 0) {
       completeTravel(travel);
-      setTravel(null);
       return;
     }
 
     const timer = window.setTimeout(() => {
-      const [nextStep, ...remainingPath] = travel.path;
       onChange((currentGame) => {
-        const movedGame = updateNavigationPosition(currentGame, travel.mapId, nextStep);
-        const stepDays = travel.mapId === WORLD_GRID_MAP_ID ? WORLD_TILE_MOVE_DAYS : REGION_TILE_MOVE_DAYS;
-        return advanceTime(movedGame, stepDays);
+        const activeTravel = currentGame.world.activeTravel;
+        const [nextStep, ...remainingPath] = activeTravel?.path ?? [];
+        if (!activeTravel || !nextStep) {
+          return currentGame;
+        }
+        const movedGame = updateNavigationPosition(currentGame, activeTravel.mapId, nextStep);
+        const map = getGridMapData(activeTravel.mapId);
+        const timedGame = map ? advanceTime(movedGame, getGridStepTravelHours(map, nextStep)) : movedGame;
+        return {
+          ...timedGame,
+          world: {
+            ...timedGame.world,
+            activeTravel: {
+              ...activeTravel,
+              path: remainingPath,
+            },
+          },
+        };
       });
-      setTravel({ ...travel, path: remainingPath });
     }, GRID_MOVEMENT_STEP_MS);
 
     return () => window.clearTimeout(timer);
@@ -118,7 +123,11 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
     onChange((currentGame) => appendLog(currentGame, result.ok ? "网格导航自检通过。" : "网格导航自检发现异常，请查看调试信息。"));
   }
 
-  function startTravel(mapId: string, rawTarget: GridCoord, intent: TravelIntent) {
+  function startTravel(mapId: string, rawTarget: GridCoord, intent: GridTravelIntent) {
+    if (game.world.activeTravel) {
+      onChange((currentGame) => appendLog(currentGame, "你正在赶路，先走完当前行程。"));
+      return;
+    }
     const map = getGridMapData(mapId);
     if (!map) {
       return;
@@ -138,11 +147,28 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
     }
 
     const steps = getPathMovementSteps(path);
-    setTravel({ mapId, target, path: steps, intent, adjusted: !isSameGridCoord(rawTarget, target) });
+    const totalHours = getGridPathTravelHours(map, steps);
+    const activeTravel: ActiveGridTravel = {
+      mapId,
+      target,
+      path: steps,
+      totalSteps: steps.length,
+      totalHours,
+      originLocationId: game.world.locationId,
+      intent,
+      adjusted: !isSameGridCoord(rawTarget, target),
+    };
     setDebugResult(null);
     onChange((currentGame) => {
-      const message = getTravelStartMessage(intent, target, !isSameGridCoord(rawTarget, target));
-      return appendLog(updateNavigationPosition(currentGame, mapId, path[0]), message);
+      const message = getTravelStartMessage(intent, target, !isSameGridCoord(rawTarget, target), steps.length, totalHours);
+      const startedGame = appendLog(updateNavigationPosition(currentGame, mapId, path[0]), message);
+      return {
+        ...startedGame,
+        world: {
+          ...startedGame.world,
+          activeTravel,
+        },
+      };
     });
   }
 
@@ -170,7 +196,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
     }
     setSelectedProvinceId(null);
     setSelectedRegionMarkerId(null);
-    startTravel(WORLD_GRID_MAP_ID, target, { kind: "province", province });
+    startTravel(WORLD_GRID_MAP_ID, target, { kind: "province", provinceId: province.id });
   }
 
   function setLocation(locationId: string) {
@@ -226,30 +252,51 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
     onChange((currentGame) => appendLog(currentGame, `${hotspot.label}：${hotspot.text}`));
   }
 
-  function completeTravel(doneTravel: ActiveTravel) {
+  function completeTravel(doneTravel: ActiveGridTravel) {
     const map = getGridMapData(doneTravel.mapId);
     const targetZone = map ? findGridDestinationZone(doneTravel.mapId, doneTravel.target) : null;
+    const settleTravel = (transform: (currentGame: GameState) => GameState) => {
+      onChange((currentGame) => {
+        const activeTravel = currentGame.world.activeTravel;
+        if (
+          !activeTravel ||
+          activeTravel.mapId !== doneTravel.mapId ||
+          activeTravel.path.length > 0 ||
+          !isSameGridCoord(activeTravel.target, doneTravel.target)
+        ) {
+          return currentGame;
+        }
+        return transform(clearActiveTravel(currentGame));
+      });
+    };
 
     if (doneTravel.intent.kind === "province") {
-      const province = doneTravel.intent.province;
+      const provinceId = doneTravel.intent.provinceId;
+      const province = worldProvinces.find((item) => item.id === provinceId);
       if (province) {
         setSelectedProvinceId(province.id);
         setSelectedRegionMarkerId(null);
         setView("world");
-        onChange((currentGame) =>
+        settleTravel((currentGame) =>
           appendLog(
             updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
             `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${province.name}地界，已展开州域信息。`,
           ),
         );
+      } else {
+        settleTravel((currentGame) => appendLog(currentGame, "行程目标已失效，你在原地重新辨认方向。"));
       }
       return;
     }
 
     if (doneTravel.intent.kind === "location") {
       const locationId = doneTravel.intent.locationId;
+      const targetLocation = getLocation(doneTravel.intent.regionId, locationId);
       setView("location");
-      onChange((currentGame) => applyLocationChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), locationId));
+      settleTravel((currentGame) => {
+        const arrived = applyLocationChange(updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target), locationId);
+        return queueArrivalEvent(arrived, doneTravel, targetLocation.name, locationId, targetZone?.eventIds);
+      });
       return;
     }
 
@@ -257,12 +304,13 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
       const targetLocation = getLocation(doneTravel.intent.regionId, doneTravel.intent.locationId);
       setSelectedRegionMarkerId(targetLocation.id);
       setView("region");
-      onChange((currentGame) =>
-        appendLog(
+      settleTravel((currentGame) => {
+        const arrived = appendLog(
           updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
           `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${targetLocation.name}周边，已展开地点信息。`,
-        ),
-      );
+        );
+        return queueArrivalEvent(arrived, doneTravel, targetLocation.name, targetLocation.id, targetZone?.eventIds);
+      });
       return;
     }
 
@@ -271,7 +319,7 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
       if (province) {
         setSelectedProvinceId(province.id);
         setView("world");
-        onChange((currentGame) =>
+        settleTravel((currentGame) =>
           appendLog(
             updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
             `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${province.name}地界，已展开州域信息。`,
@@ -287,17 +335,18 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
       if (targetLocation) {
         setSelectedRegionMarkerId(targetLocation.id);
         setView("region");
-        onChange((currentGame) =>
-          appendLog(
+        settleTravel((currentGame) => {
+          const arrived = appendLog(
             updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
             `${doneTravel.adjusted ? "目标落在险阻处，已改抵附近可走格。" : ""}你抵达${targetLocation.name}周边，已展开地点信息。`,
-          ),
-        );
+          );
+          return queueArrivalEvent(arrived, doneTravel, targetLocation.name, targetLocation.id, targetZone.eventIds);
+        });
         return;
       }
     }
 
-    onChange((currentGame) =>
+    settleTravel((currentGame) =>
       appendLog(
         updateNavigationPosition(currentGame, doneTravel.mapId, doneTravel.target),
         doneTravel.adjusted ? "目标落在险阻处，你已抵达附近最近的可走格。" : "你沿着灵路抵达目标格。",
@@ -355,14 +404,13 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
           <article className="scene-card">
             <p className="muted">{currentProvince.description}</p>
             {regionMap && regionMapData ? (
-              <RegionImageMapView
+              <GridRegionMapView
                 mapData={regionMapData}
                 game={game}
                 travel={travel}
                 debugOpen={debugOpen}
                 debugResult={debugResult}
                 config={regionMap}
-                regionName={region.name}
                 currentLocationId={location.id}
                 selectedMarkerId={selectedRegionMarkerId}
                 locations={region.locations}
@@ -423,12 +471,17 @@ export default function ExplorePanel({ game, onChange }: { game: GameState; onCh
               <small>{scene.type}</small>
               <p>{scene.description}</p>
               <div className="action-grid">
-                {scene.actions.map((action) => (
-                  <button key={action.id} onClick={() => onChange(handleAction(game, action))}>
-                    <GameIcon name={getActionIconName(action.kind)} size={16} />
-                    {action.label}
-                  </button>
-                ))}
+                {scene.actions.map((action) => {
+                  const cooldownKey = getSceneActionCooldownKey(game, action);
+                  const cooldownHours = game.world.passive.eventCooldowns[cooldownKey] ?? 0;
+                  const coolingDown = isCooldownAction(action) && cooldownHours > 0;
+                  return (
+                    <button key={action.id} disabled={coolingDown} onClick={() => onChange(handleAction(game, action))}>
+                      <GameIcon name={getActionIconName(action.kind)} size={16} />
+                      {coolingDown ? `${action.label} · ${formatCooldown(cooldownHours)}` : action.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </article>
@@ -501,7 +554,7 @@ function WorldMapView({
 }: {
   mapData: GridMapData;
   game: GameState;
-  travel: ActiveTravel | null;
+  travel: ActiveGridTravel | null;
   debugOpen: boolean;
   debugResult: string | null;
   selectedProvince: WorldProvince | null;
@@ -522,6 +575,11 @@ function WorldMapView({
   const zones = useMemo(() => getGridDestinationZones(mapData.mapId), [mapData.mapId]);
   const hitZone = (targetCoord ? findGridDestinationZone(mapData.mapId, targetCoord) : null) ?? findGridDestinationZone(mapData.mapId, currentCoord);
   const hitZoneLabel = hitZone ? getDestinationZoneLabel(hitZone, game.world.regionId) : null;
+  const travelTargetProvinceId =
+    travel?.mapId === mapData.mapId && travel.intent.kind === "province" ? travel.intent.provinceId : null;
+  const travelTargetProvince = travelTargetProvinceId
+    ? worldProvinces.find((province) => province.id === travelTargetProvinceId)
+    : null;
 
   function clampScale(nextScale: number) {
     return Math.min(4, Math.max(1, Number(nextScale.toFixed(2))));
@@ -557,8 +615,8 @@ function WorldMapView({
       <MapHeader
         title="大世界"
         subtitle={
-          travel?.mapId === mapData.mapId && travel.intent.kind === "province"
-            ? `正在前往：${travel.intent.province.name}`
+          travelTargetProvince
+            ? `正在前往：${travelTargetProvince.name} · ${travel?.totalSteps ?? 0} 格 / ${formatTravelTime(travel?.totalHours ?? 0)}`
             : selectedProvince
               ? `已抵达州域：${selectedProvince.name}`
               : "点击州域标记自动寻路，抵达后查看势力"
@@ -606,13 +664,12 @@ function WorldMapView({
         }}
       >
         <div
-          className="world-map-canvas"
+          className="world-map-canvas grid-map-canvas"
           style={{
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={worldMapSrc} alt="修仙大世界地图" draggable={false} />
-          {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} /> : null}
+          <GridTerrainLayer mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} />
           <GridPlayerMarker mapData={mapData} coord={currentCoord} markerScale={1 / scale} />
           {worldProvinces.map((province) => {
             const zone = getGridDestinationZone(mapData.mapId, "province", province.id);
@@ -673,14 +730,13 @@ function WorldMapView({
   );
 }
 
-function RegionImageMapView({
+function GridRegionMapView({
   mapData,
   game,
   travel,
   debugOpen,
   debugResult,
   config,
-  regionName,
   currentLocationId,
   selectedMarkerId,
   locations,
@@ -693,11 +749,10 @@ function RegionImageMapView({
 }: {
   mapData: GridMapData;
   game: GameState;
-  travel: ActiveTravel | null;
+  travel: ActiveGridTravel | null;
   debugOpen: boolean;
   debugResult: string | null;
   config: RegionMapConfig;
-  regionName: string;
   currentLocationId: string;
   selectedMarkerId: string | null;
   locations: LocationNode[];
@@ -754,12 +809,12 @@ function RegionImageMapView({
   }
 
   return (
-    <div className="region-image-map">
+    <div className="region-grid-map grid-region-map">
       <MapHeader
         title="区域地图"
         subtitle={
           travelTargetLocation
-            ? `正在前往：${travelTargetLocation.name}`
+            ? `正在前往：${travelTargetLocation.name} · ${travel?.totalSteps ?? 0} 格 / ${formatTravelTime(travel?.totalHours ?? 0)}`
             : selectedLocation
               ? `已抵达地点：${selectedLocation.name}`
               : "点击地点标记自动寻路，抵达后查看详情"
@@ -807,13 +862,12 @@ function RegionImageMapView({
         }}
       >
         <div
-          className="world-map-canvas region-map-canvas"
+          className="world-map-canvas region-map-canvas grid-map-canvas"
           style={{
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
           }}
         >
-          <img src={regionMapImages[config.imageKey]} alt={`${regionName}区域地图`} draggable={false} />
-          {debugOpen ? <GridDebugOverlay mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} /> : null}
+          <GridTerrainLayer mapData={mapData} current={currentCoord} target={targetCoord} path={visiblePath} zones={zones} hitZone={hitZone} />
           <GridPlayerMarker mapData={mapData} coord={currentCoord} markerScale={1 / scale} />
           {config.markers.map((marker) => {
             const item = locations.find((location) => location.id === marker.locationId);
@@ -914,10 +968,14 @@ function MapHeader({
           <GameIcon name="action-reset" size={16} />
           重置
         </button>
-        <button className={debugOpen ? "active" : ""} onClick={onToggleDebug}>
-          网格
-        </button>
-        <button onClick={onRunSelfTest}>自检</button>
+        {SHOW_MAP_DEBUG_TOOLS ? (
+          <>
+            <button className={debugOpen ? "active" : ""} onClick={onToggleDebug}>
+              坐标
+            </button>
+            <button onClick={onRunSelfTest}>自检</button>
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -946,7 +1004,7 @@ function getGridAnchorStyle(mapData: GridMapData, coord: GridCoord, markerScale:
   } as CSSProperties;
 }
 
-function GridDebugOverlay({
+function GridTerrainLayer({
   mapData,
   current,
   target,
@@ -968,12 +1026,17 @@ function GridDebugOverlay({
   const targetKey = target ? gridCoordKey(target) : null;
 
   return (
-    <div className="grid-debug-overlay" aria-hidden="true">
+    <div className="grid-debug-overlay grid-terrain-layer" aria-hidden="true">
       {mapData.cells.map((cell) => {
         const key = gridCoordKey(cell);
+        const terrainClass = cell.walkable
+          ? cell.movementCost > 1
+            ? `walkable high-cost cost-${cell.movementCost}`
+            : "walkable"
+          : "blocked";
         return (
           <span
-            className={`grid-debug-cell ${cell.walkable ? "walkable" : "blocked"} ${zoneKeys.has(key) ? "zone" : ""} ${
+            className={`grid-debug-cell grid-terrain-cell ${terrainClass} ${zoneKeys.has(key) ? "zone" : ""} ${
               hitZoneKeys.has(key) ? "zone-hit" : ""
             } ${cell.portalTargetMapId ? "portal" : ""} ${pathKeys.has(key) ? "path" : ""} ${key === currentKey ? "current" : ""} ${
               key === targetKey ? "target" : ""
@@ -1041,7 +1104,7 @@ function getNavigationCoord(game: GameState, mapId: string): GridCoord {
 }
 
 function updateNavigationPosition(game: GameState, mapId: string, coord: GridCoord, activeMapId = mapId): GameState {
-  return advanceTime({
+  return {
     ...game,
     world: {
       ...game.world,
@@ -1054,14 +1117,24 @@ function updateNavigationPosition(game: GameState, mapId: string, coord: GridCoo
         },
       },
     },
-  }, 1);
+  };
+}
+
+function clearActiveTravel(game: GameState): GameState {
+  return {
+    ...game,
+    world: {
+      ...game.world,
+      activeTravel: null,
+    },
+  };
 }
 
 function getRegionIdFromGridMapId(mapId: string): string | null {
   return mapId.startsWith("region:") ? mapId.slice("region:".length) : null;
 }
 
-function isLocationTravelIntent(intent: TravelIntent): intent is LocationTravelIntent {
+function isLocationTravelIntent(intent: GridTravelIntent): intent is LocationTravelIntent {
   return intent.kind === "locationPreview" || intent.kind === "location";
 }
 
@@ -1074,6 +1147,28 @@ function getDestinationZoneLabel(zone: GridDestinationZone, currentRegionId: str
     return getLocation(regionId, zone.targetId).name;
   }
   return zone.zoneId;
+}
+
+function queueArrivalEvent(
+  game: GameState,
+  travel: ActiveGridTravel,
+  destinationLabel: string,
+  destinationLocationId: string,
+  eventIds?: readonly string[],
+): GameState {
+  const regionId = getRegionIdFromGridMapId(travel.mapId) ?? game.world.regionId;
+  if (regionId !== "central" || travel.totalSteps <= 0) {
+    return game;
+  }
+  return maybeQueueTravelEvent(game, {
+    mapId: travel.mapId,
+    regionId,
+    destinationLabel,
+    stepCount: travel.totalSteps,
+    originLocationId: travel.originLocationId,
+    destinationLocationId,
+    eventIds,
+  });
 }
 
 function applyProvinceTravelChange(game: GameState, province: WorldProvince, portalCell?: { portalTargetMapId?: string; portalTargetX?: number; portalTargetY?: number }): GameState {
@@ -1122,15 +1217,32 @@ function applyLocationChange(game: GameState, locationId: string): GameState {
   }, { type: "visit", targetId: locationId });
 }
 
-function getTravelStartMessage(intent: TravelIntent, target: GridCoord, adjusted: boolean): string {
-  const suffix = adjusted ? "目标不可走，已改往附近最近可走格。" : `目标格 ${gridCoordKey(target)}。`;
+function getTravelStartMessage(
+  intent: GridTravelIntent,
+  target: GridCoord,
+  adjusted: boolean,
+  stepCount: number,
+  totalHours: number,
+): string {
+  const route = `${stepCount} 格，预计 ${formatTravelTime(totalHours)}`;
+  const suffix = adjusted ? `目标不可走，已改往附近最近可走格；${route}。` : `目标格 ${gridCoordKey(target)}；${route}。`;
   if (intent.kind === "province") {
-    return `你向${intent.province.name}入口行去，${suffix}`;
+    const province = worldProvinces.find((item) => item.id === intent.provinceId);
+    return `你向${province?.name ?? "州域"}入口行去，${suffix}`;
   }
   if (intent.kind === "location" || intent.kind === "locationPreview") {
     return `你向${getLocation(intent.regionId, intent.locationId).name}行去，${suffix}`;
   }
   return `你展开身法沿格线前行，${suffix}`;
+}
+
+function formatTravelTime(hours: number): string {
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    const remainHours = hours % 24;
+    return remainHours ? `${days} 日 ${remainHours} 时辰` : `${days} 日`;
+  }
+  return `${Math.max(0, hours)} 时辰`;
 }
 
 function getLocationTypeLabel(type: "city" | "town" | "wild" | "secret"): string {
@@ -1194,6 +1306,11 @@ function getActionIconName(kind: SceneAction["kind"]): GameIconName {
 }
 
 function handleAction(game: GameState, action: SceneAction): GameState {
+  const cooldownKey = getSceneActionCooldownKey(game, action);
+  const cooldownHours = game.world.passive.eventCooldowns[cooldownKey] ?? 0;
+  if (isCooldownAction(action) && cooldownHours > 0) {
+    return appendLog(game, `此处灵机尚未恢复，还需等待 ${formatCooldown(cooldownHours)}。`);
+  }
   if (action.kind === "dialogue") {
     return appendLog(
       recordQuestEvent(game, { type: "talk", targetId: action.id }),
@@ -1204,13 +1321,13 @@ function handleAction(game: GameState, action: SceneAction): GameState {
     return joinSect(game);
   }
   if (action.kind === "combat" && action.targetId) {
-    return advanceTime(beginCombat(game, action.targetId), 1);
+    return beginCombat(game, action.targetId);
   }
   if (action.kind === "gather") {
-    if (action.rewards) {
-      return advanceTime(appendLog(addRewards(game, action.rewards), action.text ?? "你细心采集，收起此地灵物。"), 2);
-    }
-    return advanceTime(grantGatherReward(game), 2);
+    const nextGame = action.rewards
+      ? advanceTime(appendLog(addRewards(game, action.rewards), action.text ?? "你细心采集，收起此地灵物。"), 2)
+      : grantGatherReward(game);
+    return setSceneActionCooldown(nextGame, cooldownKey, 24);
   }
   if (action.kind === "recruitPet") {
     return recruitPet(game);
@@ -1219,12 +1336,43 @@ function handleAction(game: GameState, action: SceneAction): GameState {
     return recruitCompanion(game);
   }
   if (action.kind === "treasure") {
-    if (action.rewards) {
-      return advanceTime(appendLog(addRewards(game, action.rewards), action.text ?? "你搜寻此地，得到一份机缘。"), 2);
-    }
-    return advanceTime(grantTreasure(game), 2);
+    const nextGame = action.rewards
+      ? advanceTime(appendLog(addRewards(game, action.rewards), action.text ?? "你搜寻此地，得到一份机缘。"), 2)
+      : grantTreasure(game);
+    return setSceneActionCooldown(nextGame, cooldownKey, 720);
   }
   return game;
+}
+
+function isCooldownAction(action: SceneAction): boolean {
+  return action.kind === "gather" || action.kind === "treasure";
+}
+
+function getSceneActionCooldownKey(game: GameState, action: SceneAction): string {
+  return `scene_action:${game.world.regionId}:${game.world.locationId}:${game.world.sceneId}:${action.id}`;
+}
+
+function setSceneActionCooldown(game: GameState, cooldownKey: string, hours: number): GameState {
+  return {
+    ...game,
+    world: {
+      ...game.world,
+      passive: {
+        ...game.world.passive,
+        eventCooldowns: {
+          ...game.world.passive.eventCooldowns,
+          [cooldownKey]: hours,
+        },
+      },
+    },
+  };
+}
+
+function formatCooldown(hours: number): string {
+  if (hours >= 24) {
+    return `${Math.ceil(hours / 24)}日`;
+  }
+  return `${Math.ceil(hours)}时`;
 }
 
 function Shop({ game, onChange }: { game: GameState; onChange: ExploreChange }) {

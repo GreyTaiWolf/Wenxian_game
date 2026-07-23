@@ -1,9 +1,11 @@
 import { getEnemyGroup, getEnemyTemplate } from "../data/enemies";
 import { formatItemName, getItem, normalizeItemId } from "../data/items";
 import { getSkill } from "../data/skills";
+import { getRegion } from "../data/world";
 import type { CombatActor, CombatState, GameState, ItemAffix, SkillConfig, TargetType } from "../types";
 import { chooseAiAction } from "./ai";
 import { getActiveEquipmentAffixes, getEffectiveStats } from "./equipment";
+import { rollCombatLoot } from "./loot";
 import { recordQuestEvent } from "./quests";
 import { addItems, addRewards, appendLog } from "./state";
 import { advanceTime } from "./time";
@@ -411,35 +413,102 @@ function runAiTurn(combat: CombatState): CombatState {
   return advanceTurn(applySkill(prepared, actor.id, choice.skillId, choice.targetId));
 }
 
-function settleCombat(game: GameState, combat: CombatState): GameState {
+export function settleCombat(game: GameState, combat: CombatState): GameState {
   const result = battleEnded(combat);
   if (!result) {
     return { ...game, combat };
   }
   if (result === "victory") {
-    const withQuestProgress = recordDefeatedEnemyProgress({ ...game, combat: undefined }, combat);
+    const group = getEnemyGroup(combat.groupId);
+    const firstClear = (game.world.encounterWins[combat.groupId] ?? 0) === 0;
+    const loot = rollCombatLoot(group.dropTableId, firstClear);
+    const withVitals = syncPlayerVitals({ ...game, combat: undefined }, combat);
+    const withQuestProgress = recordDefeatedEnemyProgress(withVitals, combat);
     const rewarded = addRewards(withQuestProgress, combat.rewards);
-    const recovered = applyBattleEndRecover(rewarded, combat);
+    const withMaterials = addItems(rewarded, loot.items);
+    const withLoot = {
+      ...withMaterials,
+      inventory: {
+        ...withMaterials.inventory,
+        equipmentItems: [...withMaterials.inventory.equipmentItems, ...loot.equipment],
+      },
+      world: {
+        ...withMaterials.world,
+        encounterWins: {
+          ...withMaterials.world.encounterWins,
+          [combat.groupId]: (withMaterials.world.encounterWins[combat.groupId] ?? 0) + 1,
+        },
+      },
+    };
+    const recovered = applyBattleEndRecover(withLoot, combat);
+    const report = {
+      id: `combat_report_${combat.id}`,
+      groupId: combat.groupId,
+      title: combat.title,
+      rank: combat.rank,
+      result: "victory" as const,
+      firstClear,
+      cultivation: combat.rewards.cultivation,
+      spiritStones: combat.rewards.spiritStones,
+      items: loot.items,
+      equipment: loot.equipment,
+      createdAt: new Date().toISOString(),
+    };
+    const equipmentMessage = loot.equipment.length
+      ? `，装备 ${loot.equipment.map((instance) => instance.displayName).join("、")}`
+      : "";
     return appendLog(
       {
         ...recovered,
         combat: undefined,
+        combatReport: report,
       },
-      `战斗胜利：修为 +${combat.rewards.cultivation}，灵石 +${combat.rewards.spiritStones}。`,
+      `${firstClear ? "首次击破" : "战斗胜利"}：修为 +${combat.rewards.cultivation}，灵石 +${combat.rewards.spiritStones}${equipmentMessage}。`,
     );
   }
+  const region = getRegion(game.world.regionId);
+  const safeTown = region.locations.find((location) => location.id === game.world.lastTownId) ?? region.locations[0];
+  const recovered = syncPlayerVitals(game, combat, 0.35);
   return appendLog(
     {
-      ...game,
+      ...recovered,
       combat: undefined,
+      combatReport: {
+        id: `combat_report_${combat.id}`,
+        groupId: combat.groupId,
+        title: combat.title,
+        rank: combat.rank,
+        result: "defeat",
+        firstClear: false,
+        cultivation: 0,
+        spiritStones: 0,
+        items: [],
+        equipment: [],
+        createdAt: new Date().toISOString(),
+      },
       world: {
-        ...game.world,
-        locationId: game.world.lastTownId,
-        sceneId: "gate",
+        ...recovered.world,
+        locationId: safeTown.id,
+        sceneId: safeTown.scenes[0]?.id ?? recovered.world.sceneId,
       },
     },
     "队伍气血耗尽，你退回最近城镇调息。本场奖励未获得。",
   );
+}
+
+function syncPlayerVitals(game: GameState, combat: CombatState, minimumPct = 0): GameState {
+  const playerActor = combat.allies.find((actor) => actor.kind === "player");
+  if (!playerActor) {
+    return game;
+  }
+  return {
+    ...game,
+    player: {
+      ...game.player,
+      hp: Math.min(playerActor.maxHp, Math.max(Math.ceil(playerActor.maxHp * minimumPct), playerActor.hp)),
+      spirit: Math.min(playerActor.maxSpirit, Math.max(Math.ceil(playerActor.maxSpirit * minimumPct), playerActor.spirit)),
+    },
+  };
 }
 
 function recordDefeatedEnemyProgress(game: GameState, combat: CombatState): GameState {
@@ -501,6 +570,7 @@ export function beginCombat(game: GameState, groupId: string): GameState {
     id: `combat_${Date.now()}`,
     groupId,
     title: group.title,
+    rank: group.rank,
     allies,
     enemies,
     turnOrder: buildTurnOrder({ allies, enemies }),
@@ -509,7 +579,7 @@ export function beginCombat(game: GameState, groupId: string): GameState {
     logs: [`遭遇 ${group.title}，战斗开始。`],
     rewards: group.rewards,
   };
-  return advanceTime(advanceUntilPlayer(game, applyCombatStartAffixes(combat)), 1);
+  return advanceTime(advanceUntilPlayer({ ...game, combatReport: undefined }, applyCombatStartAffixes(combat)), 1);
 }
 
 export function performPlayerSkill(game: GameState, skillId: string, targetId?: string): GameState {
@@ -566,7 +636,8 @@ export function performEscape(game: GameState): GameState {
   }
   const escaped = Math.random() < Math.min(0.95, 0.72 + affixEffectValue(actor, "escape_rate"));
   if (escaped) {
-    return advanceTime(appendLog({ ...game, combat: undefined }, "你寻得空隙，带队脱离战斗。"), 1);
+    const withVitals = syncPlayerVitals(game, preparedCombat);
+    return advanceTime(appendLog({ ...withVitals, combat: undefined }, "你寻得空隙，带队脱离战斗。"), 1);
   }
   const combat = advanceTurn({
     ...game.combat,
@@ -574,6 +645,16 @@ export function performEscape(game: GameState): GameState {
     logs: ["逃离失败，敌人步步紧逼。", ...preparedCombat.logs].slice(0, 16),
   });
   return advanceTime(advanceUntilPlayer(game, combat), 1);
+}
+
+export function dismissCombatReport(game: GameState): GameState {
+  if (!game.combatReport) {
+    return game;
+  }
+  return {
+    ...game,
+    combatReport: undefined,
+  };
 }
 
 export function performUseItem(game: GameState, itemId: string): GameState {

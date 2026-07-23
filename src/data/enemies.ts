@@ -1,4 +1,4 @@
-import type { CombatReward, Stats } from "../types";
+import type { CombatReward, EnemyRank, Stats } from "../types";
 
 export interface EnemyTemplate {
   id: string;
@@ -11,6 +11,8 @@ export interface EnemyTemplate {
 export interface EnemyGroup {
   id: string;
   title: string;
+  rank: EnemyRank;
+  dropTableId: string;
   enemies: Array<{ templateId: string; count: number }>;
   rewards: CombatReward;
 }
@@ -92,16 +94,20 @@ export const enemyGroups: EnemyGroup[] = [
   {
     id: "wolf_pack",
     title: "黑风山狼群",
+    rank: "normal",
+    dropTableId: "drop_wolf_pack",
     enemies: [{ templateId: "mountain_wolf", count: 3 }],
     rewards: {
       cultivation: 36,
       spiritStones: 34,
-      items: [{ itemId: "beast_bone", amount: 1 }],
+      items: [],
     },
   },
   {
     id: "black_wind_duo",
     title: "黑风妖修",
+    rank: "elite",
+    dropTableId: "drop_black_wind_duo",
     enemies: [
       { templateId: "black_wind_cultivator", count: 1 },
       { templateId: "mountain_wolf", count: 2 },
@@ -109,28 +115,26 @@ export const enemyGroups: EnemyGroup[] = [
     rewards: {
       cultivation: 72,
       spiritStones: 86,
-      items: [
-        { itemId: "beast_bone", amount: 2 },
-        { itemId: "spirit_herb", amount: 1 },
-      ],
+      items: [],
     },
   },
   {
     id: "herb_guard",
     title: "灵药谷守草妖兽",
+    rank: "normal",
+    dropTableId: "drop_herb_guard",
     enemies: [{ templateId: "grass_guard", count: 2 }],
     rewards: {
       cultivation: 44,
       spiritStones: 26,
-      items: [
-        { itemId: "qi_grass", amount: 1 },
-        { itemId: "spirit_herb", amount: 2 },
-      ],
+      items: [],
     },
   },
   {
     id: "ancient_cave",
     title: "古修洞府守卫",
+    rank: "boss",
+    dropTableId: "drop_ancient_cave",
     enemies: [
       { templateId: "cave_guardian", count: 1 },
       { templateId: "grass_guard", count: 1 },
@@ -138,41 +142,38 @@ export const enemyGroups: EnemyGroup[] = [
     rewards: {
       cultivation: 120,
       spiritStones: 140,
-      items: [
-        { itemId: "foundation_pill", amount: 1 },
-        { itemId: "greenwood_essence", amount: 1 },
-      ],
+      items: [],
     },
   },
   {
     id: "baicao_vines",
     title: "百草谷藤妖",
+    rank: "normal",
+    dropTableId: "drop_baicao_vines",
     enemies: [{ templateId: "venom_vine", count: 2 }],
     rewards: {
       cultivation: 96,
       spiritStones: 80,
-      items: [
-        { itemId: "spirit_herb", amount: 2 },
-        { itemId: "demon_core_shard", amount: 1 },
-      ],
+      items: [],
     },
   },
   {
     id: "miasma_gu_swarm",
     title: "瘴雾蛊群",
+    rank: "elite",
+    dropTableId: "drop_miasma_gu_swarm",
     enemies: [{ templateId: "miasma_gu", count: 3 }],
     rewards: {
       cultivation: 130,
       spiritStones: 90,
-      items: [
-        { itemId: "miasma_flower", amount: 2 },
-        { itemId: "demon_core_shard", amount: 1 },
-      ],
+      items: [],
     },
   },
   {
     id: "beast_mountain_patrol",
     title: "万妖山巡山兽",
+    rank: "elite",
+    dropTableId: "drop_beast_mountain_patrol",
     enemies: [
       { templateId: "mountain_yao", count: 1 },
       { templateId: "mountain_wolf", count: 2 },
@@ -180,15 +181,14 @@ export const enemyGroups: EnemyGroup[] = [
     rewards: {
       cultivation: 150,
       spiritStones: 120,
-      items: [
-        { itemId: "beast_bone", amount: 2 },
-        { itemId: "demon_core_shard", amount: 1 },
-      ],
+      items: [],
     },
   },
   {
     id: "waterfall_guard",
     title: "灵瀑守卫",
+    rank: "boss",
+    dropTableId: "drop_waterfall_guard",
     enemies: [
       { templateId: "wood_puppet", count: 1 },
       { templateId: "venom_vine", count: 1 },
@@ -196,25 +196,26 @@ export const enemyGroups: EnemyGroup[] = [
     rewards: {
       cultivation: 180,
       spiritStones: 160,
-      items: [
-        { itemId: "greenwood_essence", amount: 1 },
-        { itemId: "spirit_herb", amount: 2 },
-      ],
+      items: [],
     },
   },
   {
     id: "tide_cave_guard",
     title: "潮音秘洞守卫",
+    rank: "boss",
+    dropTableId: "drop_tide_cave_guard",
     enemies: [{ templateId: "tide_guard", count: 2 }],
     rewards: {
       cultivation: 210,
       spiritStones: 180,
-      items: [{ itemId: "tide_shell", amount: 2 }],
+      items: [],
     },
   },
   {
     id: "wood_spirit_trial",
     title: "木灵宗试炼木阵",
+    rank: "elite",
+    dropTableId: "drop_wood_spirit_trial",
     enemies: [
       { templateId: "wood_puppet", count: 1 },
       { templateId: "venom_vine", count: 1 },
@@ -222,7 +223,7 @@ export const enemyGroups: EnemyGroup[] = [
     rewards: {
       cultivation: 160,
       spiritStones: 120,
-      items: [{ itemId: "greenwood_essence", amount: 1 }],
+      items: [],
     },
   },
 ];

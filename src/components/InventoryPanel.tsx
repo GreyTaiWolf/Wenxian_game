@@ -11,6 +11,7 @@ import {
 import {
   canEquipItem,
   canSellItem,
+  compareEquipmentInstance,
   equipEquipmentInstance,
   equipmentSlots,
   getEffectiveStats,
@@ -32,6 +33,8 @@ type InventoryTab = "equipment" | "items" | "pills" | "materials";
 interface InventoryGridEntry {
   id: string;
   item: ItemConfig;
+  grade: ItemGrade;
+  displayName: string;
   iconName: GameIconName;
   amount?: number;
   onSelect: () => void;
@@ -124,6 +127,8 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
       {
         id: instance.id,
         item,
+        grade: instance.quality,
+        displayName: instance.displayName,
         iconName: item.equipment ? slotIcons[item.equipment.slot] ?? "equipment" : "equipment",
         onSelect: () => setSelectedEquipmentId(instance.id),
       },
@@ -149,7 +154,7 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
             return (
               <article
                 aria-label={`${slot.label} ${instance ? instance.displayName : item ? formatItemName(item) : rawValue ? "装备数据已失效" : slot.emptyLabel}`}
-                className={`equipment-slot-card ${canOpenDetail ? "clickable" : ""} ${item ? `filled grade-card grade-${item.grade}` : ""}${highlightSlotId === slot.id ? " slot-action-highlight" : ""}`}
+                className={`equipment-slot-card ${canOpenDetail ? "clickable" : ""} ${instance ? `filled grade-card grade-${instance.quality}` : ""}${highlightSlotId === slot.id ? " slot-action-highlight" : ""}`}
                 key={slot.id}
                 role={canOpenDetail ? "button" : undefined}
                 tabIndex={canOpenDetail ? 0 : undefined}
@@ -171,7 +176,7 @@ function EquipmentPanel({ game, onChange }: { game: GameState; onChange: (game: 
                   <div className="equipment-slot-meta">
                     <small>{slot.label}</small>
                   </div>
-                  <strong className={item ? getGradeNameClass(item) : ""}>{instance ? instance.displayName : item ? formatItemName(item) : rawValue ? "装备数据已失效" : slot.emptyLabel}</strong>
+                  <strong className={instance ? getGradeNameClassForGrade(instance.quality) : ""}>{instance ? instance.displayName : item ? formatItemName(item) : rawValue ? "装备数据已失效" : slot.emptyLabel}</strong>
                 </div>
               </article>
             );
@@ -295,6 +300,8 @@ function ItemList({
   const entries = visibleItems.map<InventoryGridEntry>((item) => ({
     id: item.id,
     item,
+    grade: item.grade,
+    displayName: formatItemName(item),
     iconName: getItemIconName(item, iconName),
     amount: game.inventory.items[item.id] ?? 0,
     onSelect: () => setSelectedItemId(item.id),
@@ -351,15 +358,15 @@ function InventoryGrid({
         {slots.map((entry, index) =>
           entry ? (
             <button
-              className={`inventory-grid-slot filled grade-card grade-${entry.item.grade} item-grade-press`}
+              className={`inventory-grid-slot filled grade-card grade-${entry.grade} item-grade-press`}
               key={entry.id}
               type="button"
               onClick={entry.onSelect}
             >
               <GameIcon name={entry.iconName} size={17} />
-              <strong className={getGradeNameClass(entry.item)}>{formatItemName(entry.item)}</strong>
+              <strong className={getGradeNameClassForGrade(entry.grade)}>{entry.displayName}</strong>
               <span className="inventory-grid-meta">
-                <GradeChip grade={entry.item.grade} compact />
+                <GradeChip grade={entry.grade} compact />
                 {showStackCount && typeof entry.amount === "number" ? <small className="inventory-count-badge">x{entry.amount}</small> : null}
               </span>
             </button>
@@ -410,16 +417,18 @@ function ItemDetailCard({
   const visibleAffixes = equipmentInstance?.affixes ?? item.affixes ?? [];
   const equipmentBonuses = equipmentInstance?.bonuses ?? item.equipment?.bonuses;
   const seal = equipmentInstance ? getEquipmentSealState(game, equipmentInstance) : item.equipment ? getEquipmentSealState(game, item) : null;
+  const effectiveGrade = equipmentInstance?.quality ?? item.grade;
+  const comparison = equipmentInstance && item.equipment && !equippedSlotId ? compareEquipmentInstance(game, equipmentInstance) : null;
 
   return (
     <div className="equipment-detail-backdrop" onClick={onClose}>
-      <section className={`equipment-detail-card item-detail-card grade-card grade-${item.grade}`} onClick={(event) => event.stopPropagation()}>
+      <section className={`equipment-detail-card item-detail-card grade-card grade-${effectiveGrade}`} onClick={(event) => event.stopPropagation()}>
         <div className="section-heading item-detail-head">
-          <h2 className={getGradeNameClass(item)}>
+          <h2 className={getGradeNameClassForGrade(effectiveGrade)}>
             <GameIcon name={slot ? slotIcons[slot] ?? "equipment" : getItemIconName(item)} size={18} />
             {equipmentInstance?.displayName ?? formatItemName(item)}
           </h2>
-          <GradeChip grade={item.grade} />
+          <GradeChip grade={effectiveGrade} />
         </div>
         <p>{item.description}</p>
         <div className="item-detail-pill-row">
@@ -463,6 +472,31 @@ function ItemDetailCard({
                 </span>
               ))}
             </div>
+          </section>
+        ) : null}
+        {comparison ? (
+          <section className="item-detail-section equipment-compare-section">
+            <div className="equipment-compare-heading">
+              <h3>替换比较</h3>
+              <strong className={getDeltaClass(comparison.powerDelta)}>
+                战力 {formatSignedNumber(comparison.powerDelta)}
+              </strong>
+            </div>
+            <p>
+              当前：{comparison.equipped?.displayName ?? "此槽为空"}
+            </p>
+            {Object.keys(comparison.statDeltas).length > 0 ? (
+              <div className="equipment-compare-grid">
+                {(Object.entries(comparison.statDeltas) as Array<[keyof Stats, number]>).map(([key, delta]) => (
+                  <span className={getDeltaClass(delta)} key={key}>
+                    {statLabels[key]} {formatSignedStatValue(key, delta)}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <small>最终面板属性没有变化。</small>
+            )}
+            {comparison.hasRuleAffixChanges ? <small>规则型词条会改变实战效果，未全部折算进战力数字。</small> : null}
           </section>
         ) : null}
         <div className="equipment-detail-stats compact">
@@ -547,7 +581,11 @@ function getInventoryItems(game: GameState, categories: ItemConfig["category"][]
 }
 
 function getGradeNameClass(item: ItemConfig): string {
-  return `grade-name grade-${item.grade}${shouldEmphasizeItemGrade(item.grade) ? " strong" : ""}`;
+  return getGradeNameClassForGrade(item.grade);
+}
+
+function getGradeNameClassForGrade(grade: ItemGrade): string {
+  return `grade-name grade-${grade}${shouldEmphasizeItemGrade(grade) ? " strong" : ""}`;
 }
 
 function getItemIconName(item: ItemConfig, fallback: GameIconName = "item"): GameIconName {
@@ -594,6 +632,25 @@ function formatStatValue(key: keyof Stats, value: number): string | number {
     return value < 1 ? `+${Math.round(value * 100)}%` : `${value.toFixed(2)}倍`;
   }
   return Math.round(value);
+}
+
+function formatSignedStatValue(key: keyof Stats, value: number): string {
+  const prefix = value > 0 ? "+" : "";
+  if (key === "critRate" || key === "dodgeRate") {
+    return `${prefix}${Math.round(value * 100)}%`;
+  }
+  if (key === "critDamage") {
+    return `${prefix}${Math.round(value * 100)}%`;
+  }
+  return `${prefix}${Math.round(value)}`;
+}
+
+function formatSignedNumber(value: number): string {
+  return `${value > 0 ? "+" : ""}${Math.round(value)}`;
+}
+
+function getDeltaClass(value: number): string {
+  return value > 0 ? "delta-positive" : value < 0 ? "delta-negative" : "delta-neutral";
 }
 
 function formatNumber(value: number): string {

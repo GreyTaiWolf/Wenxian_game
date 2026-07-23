@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { formatItemName, getItem, shouldEmphasizeItemGrade } from "../data/items";
 import { getSkill } from "../data/skills";
-import { canUseArtifactAction, getSkillSpiritCost, performArtifactAction, performEscape, performPlayerBasic, performPlayerSkill, performUseItem } from "../game/combatEngine";
+import {
+  canUseArtifactAction,
+  getSkillSpiritCost,
+  performArtifactAction,
+  performDefend,
+  performEscape,
+  performPlayerBasic,
+  performPlayerSkill,
+  performUseItem,
+} from "../game/combatEngine";
 import { getEquippedItem } from "../game/equipment";
 import { defaultCombatLoadout } from "../game/state";
 import type { CombatActor, CombatState, GameState, ItemConfig, SkillConfig } from "../types";
@@ -39,21 +48,6 @@ export default function CombatView({
   const pillAmount = loadout.pillItemId ? game.inventory.items[loadout.pillItemId] ?? 0 : 0;
   const targetPool = selectedSkill ? getTargetPool(combat.allies, combat.enemies, selectedSkill.targetType) : [];
   const logNames = useMemo(() => getLogNameMeta(combat), [combat]);
-  const hasUsableLoadoutAction =
-    carriedSkills.some((skill) => canUseSkill(skill, player, playerTurn)) ||
-    canUseSkill(divineSkill, player, playerTurn) ||
-    Boolean(playerTurn && pill?.combatHeal && pillAmount > 0);
-
-  useEffect(() => {
-    if (!combat || !playerTurn || hasUsableLoadoutAction || selectedSkill) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      onChange((prevGame) => performPlayerBasic(prevGame));
-    }, 450);
-    return () => window.clearTimeout(timer);
-  }, [combat?.id, combat?.turnIndex, hasUsableLoadoutAction, onChange, playerTurn, selectedSkill]);
-
   function useSkill(skill: SkillConfig, targetId?: string) {
     setSelectedSkill(null);
     onChange(performPlayerSkill(game, skill.id, targetId));
@@ -181,6 +175,24 @@ export default function CombatView({
         </div>
       ) : (
         <div className="combat-loadout-panel">
+          <div className="combat-tactics-row">
+            <button className="combat-slot utility" disabled={!playerTurn} onClick={() => onChange(performPlayerBasic(game))}>
+              <span>
+                <GameIcon name="combat" size={15} />
+                基础
+              </span>
+              <strong>普通攻击</strong>
+              <small>无消耗</small>
+            </button>
+            <button className="combat-slot utility" disabled={!playerTurn} onClick={() => onChange(performDefend(game))}>
+              <span>
+                <GameIcon name="equipment-robe" size={15} />
+                架势
+              </span>
+              <strong>凝神防御</strong>
+              <small>本次承伤减半</small>
+            </button>
+          </div>
           <div className="combat-martial-row">
             {renderSkillButton(carriedSkills[0], "武技一")}
             {renderSkillButton(carriedSkills[1], "武技二")}

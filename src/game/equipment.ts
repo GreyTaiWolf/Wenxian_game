@@ -3,7 +3,19 @@ import { getRealm, majorRealmOrder } from "../data/progression";
 import { calculateRealmPower } from "./derived";
 import { capFinalStats } from "./equipmentBalanceLimits";
 import { generateEquipment, getMajorRealmRank } from "./generateEquipment";
-import type { EquipmentBonus, EquipmentInstance, EquipmentSealState, EquipmentSlotId, GameState, InventoryState, ItemAffix, ItemConfig, MajorRealmId, Stats } from "../types";
+import type {
+  EquipmentBonus,
+  EquipmentInstance,
+  EquipmentSealState,
+  EquipmentSlotId,
+  GameState,
+  InventoryState,
+  ItemAffix,
+  ItemConfig,
+  ItemGrade,
+  MajorRealmId,
+  Stats,
+} from "../types";
 
 export const equipmentSlots: Array<{ id: EquipmentSlotId; label: string; emptyLabel: string }> = [
   { id: "weapon", label: "武器", emptyLabel: "未持兵刃" },
@@ -38,7 +50,10 @@ const legacyEquipmentMap: Record<string, string | null> = {
   "": null,
 };
 
-export function createEquipmentInstance(itemId: string, options: { id?: string; createdAt?: string } = {}): EquipmentInstance | null {
+export function createEquipmentInstance(
+  itemId: string,
+  options: { id?: string; createdAt?: string; rng?: () => number } = {},
+): EquipmentInstance | null {
   const normalizedItemId = normalizeItemId(itemId);
   const item = getItem(normalizedItemId);
   if (!item.equipment) {
@@ -54,6 +69,8 @@ export function createEquipmentInstance(itemId: string, options: { id?: string; 
     baseName: item.name,
     id: options.id,
     createdAt: options.createdAt,
+    rng: options.rng,
+    fixedAffixes: item.affixes,
   });
 }
 
@@ -209,6 +226,68 @@ export function getEffectiveStats(game: GameState): Stats {
 
 export function getEffectivePower(game: GameState): number {
   return calculateRealmPower(getEffectiveStats(game), getRealm(game.player.realmId));
+}
+
+export interface EquipmentComparison {
+  equipped: EquipmentInstance | null;
+  beforePower: number;
+  afterPower: number;
+  powerDelta: number;
+  statDeltas: Partial<Record<keyof Stats, number>>;
+  hasRuleAffixChanges: boolean;
+}
+
+export function compareEquipmentInstance(game: GameState, candidate: EquipmentInstance): EquipmentComparison | null {
+  const item = getEquipmentInstanceItem(candidate);
+  const slot = item?.equipment?.slot;
+  if (!item || !slot) {
+    return null;
+  }
+
+  const equipped = getEquippedEquipmentInstance(game, slot);
+  const candidateExists = game.inventory.equipmentItems.some((instance) => instance.id === candidate.id);
+  const previewGame: GameState = {
+    ...game,
+    inventory: {
+      ...game.inventory,
+      equipment: {
+        ...game.inventory.equipment,
+        [slot]: candidate.id,
+      },
+      equipmentItems: candidateExists ? game.inventory.equipmentItems : [...game.inventory.equipmentItems, candidate],
+    },
+  };
+  const beforeStats = getEffectiveStats(game);
+  const afterStats = getEffectiveStats(previewGame);
+  const beforePower = getEffectivePower(game);
+  const afterPower = getEffectivePower(previewGame);
+  const statDeltas = Object.fromEntries(
+    (Object.keys(beforeStats) as Array<keyof Stats>)
+      .map((key) => [key, afterStats[key] - beforeStats[key]] as const)
+      .filter(([, value]) => Math.abs(value) > 0.00001),
+  ) as Partial<Record<keyof Stats, number>>;
+  const previousRuleIds = new Set((equipped?.affixes ?? []).filter(isRuleAffix).map(getRuleAffixSignature));
+  const nextRuleIds = new Set(candidate.affixes.filter(isRuleAffix).map(getRuleAffixSignature));
+  const hasRuleAffixChanges =
+    previousRuleIds.size !== nextRuleIds.size ||
+    [...previousRuleIds].some((affixId) => !nextRuleIds.has(affixId));
+
+  return {
+    equipped,
+    beforePower,
+    afterPower,
+    powerDelta: afterPower - beforePower,
+    statDeltas,
+    hasRuleAffixChanges,
+  };
+}
+
+function isRuleAffix(affix: ItemAffix): boolean {
+  return Boolean(affix.effect || (affix.value && !affix.stat));
+}
+
+function getRuleAffixSignature(affix: ItemAffix): string {
+  return JSON.stringify([affix.id, affix.value ?? null, affix.effect ?? null, affix.description]);
 }
 
 export function equipItem(game: GameState, itemId: string): GameState {
@@ -371,9 +450,11 @@ export function getEquippableInventoryItems(game: GameState): EquipmentInstance[
   return game.inventory.equipmentItems
     .filter((instance) => !equippedIds.has(instance.id) && Boolean(getEquipmentInstanceItem(instance)?.equipment))
     .sort((a, b) => {
-      const itemA = getItem(a.itemId);
-      const itemB = getItem(b.itemId);
-      return itemGradeMetas[itemB.grade].tier - itemGradeMetas[itemA.grade].tier || itemA.name.localeCompare(itemB.name, "zh-CN") || a.createdAt.localeCompare(b.createdAt);
+      return (
+        itemGradeMetas[b.quality].tier - itemGradeMetas[a.quality].tier ||
+        a.displayName.localeCompare(b.displayName, "zh-CN") ||
+        a.createdAt.localeCompare(b.createdAt)
+      );
     });
 }
 
@@ -440,7 +521,7 @@ function normalizeEquipmentInstance(rawInstance: unknown, usedInstanceIds: Set<s
     displayName: typeof source.displayName === "string" ? source.displayName : fallback.displayName,
     realmTier: normalizeMajorRealmId((source as Partial<EquipmentInstance>).realmTier, item.tier),
     realmPhase: (source as Partial<EquipmentInstance>).realmPhase ?? fallback.realmPhase,
-    quality: item.grade,
+    quality: normalizeItemGrade(source.quality, item.grade),
     slot: normalizeEquipmentSlotId((source as Partial<EquipmentInstance>).slot, item.equipment.slot),
     mainStats: normalizeEquipmentBonuses((source as Partial<EquipmentInstance>).mainStats, fallback.mainStats),
     bonuses: normalizeEquipmentBonuses(source.bonuses, fallback.bonuses),
@@ -448,6 +529,10 @@ function normalizeEquipmentInstance(rawInstance: unknown, usedInstanceIds: Set<s
     affixes: normalizeAffixes(source.affixes, fallback.affixes),
     createdAt: typeof source.createdAt === "string" && source.createdAt ? source.createdAt : new Date().toISOString(),
   };
+}
+
+function normalizeItemGrade(value: unknown, fallback: ItemGrade): ItemGrade {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(itemGradeMetas, value) ? (value as ItemGrade) : fallback;
 }
 
 function normalizeEquipmentBonuses(rawBonuses: EquipmentBonus | undefined, fallback: EquipmentBonus): EquipmentBonus {

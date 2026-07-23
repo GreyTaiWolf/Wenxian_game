@@ -17,13 +17,16 @@ export interface GenerateEquipmentParams {
   id?: string;
   createdAt?: string;
   rng?: () => number;
+  fixedAffixes?: ItemAffix[];
 }
 
 export function generateEquipment(params: GenerateEquipmentParams): EquipmentInstance {
   const rng = params.rng ?? Math.random;
   const realmPhase = params.realmPhase ?? "middle";
   const mainStats = generateMainStats(params.realmTier, realmPhase, params.quality, params.slot, rng);
-  const affixes = rollAffixes(params.realmTier, params.quality, params.slot, rng);
+  const affixes = params.fixedAffixes?.length
+    ? params.fixedAffixes.map((affix) => ({ ...affix }))
+    : rollAffixes(params.realmTier, params.quality, params.slot, rng);
   const affixBonuses = calculateAffixBonuses(affixes);
   const bonuses = mergeBonuses(mainStats, affixBonuses);
   const displayName = buildEquipmentDisplayName({ name: params.baseName, quality: params.quality });

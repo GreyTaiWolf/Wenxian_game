@@ -1751,6 +1751,8 @@ small {
 
 .equipment-detail-card {
   width: min(100%, 406px);
+  max-height: calc(100dvh - 104px - env(safe-area-inset-bottom));
+  overflow-y: auto;
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -1856,6 +1858,60 @@ small {
   margin: 0;
   color: #eefcf7;
   font-size: 14px;
+}
+
+.equipment-compare-section {
+  padding: 9px;
+  border: 1px solid rgba(94, 234, 212, 0.2);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.42);
+}
+
+.equipment-compare-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.equipment-compare-heading strong {
+  font-size: 13px;
+}
+
+.equipment-compare-section > p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.equipment-compare-section > small {
+  color: #d5e3dc;
+  line-height: 1.4;
+}
+
+.equipment-compare-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.equipment-compare-grid span {
+  padding: 4px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.45);
+  font-size: 11px;
+}
+
+.delta-positive {
+  color: #86efac !important;
+}
+
+.delta-negative {
+  color: #fca5a5 !important;
+}
+
+.delta-neutral {
+  color: var(--muted) !important;
 }
 
 .item-detail-bonus-grid {
@@ -2101,7 +2157,7 @@ small {
   cursor: grabbing;
 }
 
-.region-image-map {
+.region-grid-map {
   display: grid;
   gap: 8px;
 }
@@ -2118,6 +2174,20 @@ small {
   aspect-ratio: 3 / 2;
   transform-origin: center;
   transition: transform 120ms ease;
+}
+
+.grid-map-canvas {
+  overflow: hidden;
+  border: 1px solid rgba(94, 234, 212, 0.2);
+  border-radius: 10px;
+  background:
+    linear-gradient(rgba(94, 234, 212, 0.025), rgba(94, 234, 212, 0.025)),
+    radial-gradient(circle at 38% 30%, rgba(20, 184, 166, 0.12), transparent 38%),
+    radial-gradient(circle at 72% 68%, rgba(167, 139, 250, 0.1), transparent 34%),
+    #08100f;
+  box-shadow:
+    inset 0 0 34px rgba(0, 0, 0, 0.58),
+    0 12px 30px rgba(0, 0, 0, 0.24);
 }
 
 .world-map-canvas img {
@@ -2297,37 +2367,53 @@ small {
   background: rgba(15, 23, 42, 0.05);
 }
 
-.grid-debug-cell.blocked {
-  background: rgba(248, 113, 113, 0.18);
-  border-color: rgba(248, 113, 113, 0.36);
+.grid-terrain-cell {
+  border-color: rgba(125, 211, 192, 0.11);
+  background: rgba(19, 78, 74, 0.12);
 }
 
-.grid-debug-cell.portal {
+.grid-terrain-cell.blocked {
+  border-color: rgba(71, 85, 105, 0.16);
+  background:
+    linear-gradient(135deg, rgba(2, 6, 23, 0.72) 25%, rgba(15, 23, 42, 0.58) 25% 50%, rgba(2, 6, 23, 0.72) 50% 75%, rgba(15, 23, 42, 0.58) 75%);
+  background-size: 6px 6px;
+}
+
+.grid-terrain-cell.high-cost {
+  border-color: rgba(217, 184, 108, 0.22);
+  background: rgba(180, 83, 9, 0.16);
+}
+
+.grid-terrain-cell.cost-3 {
+  background: rgba(127, 29, 29, 0.22);
+}
+
+.grid-terrain-cell.portal {
   background: rgba(246, 196, 83, 0.18);
   border-color: rgba(246, 196, 83, 0.64);
 }
 
-.grid-debug-cell.zone {
+.grid-terrain-cell.zone {
   background: rgba(34, 197, 94, 0.13);
   border-color: rgba(74, 222, 128, 0.42);
 }
 
-.grid-debug-cell.path {
+.grid-terrain-cell.path {
   background: rgba(56, 189, 248, 0.2);
   border-color: rgba(56, 189, 248, 0.68);
 }
 
-.grid-debug-cell.current {
+.grid-terrain-cell.current {
   background: rgba(94, 234, 212, 0.36);
   border-color: rgba(94, 234, 212, 0.95);
 }
 
-.grid-debug-cell.target {
+.grid-terrain-cell.target {
   background: rgba(167, 139, 250, 0.34);
   border-color: rgba(167, 139, 250, 0.95);
 }
 
-.grid-debug-cell.zone-hit {
+.grid-terrain-cell.zone-hit {
   box-shadow: inset 0 0 0 2px rgba(246, 196, 83, 0.82);
 }
 
@@ -2597,6 +2683,43 @@ button.scene-hotspot-button:focus-visible {
   line-height: 1.65;
 }
 
+.travel-event-backdrop {
+  padding: 16px 12px calc(18px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 50% 78%, rgba(94, 234, 212, 0.12), transparent 34%),
+    rgba(2, 6, 23, 0.74);
+}
+
+.travel-event-card {
+  max-height: calc(100dvh - 34px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  border-color: rgba(217, 184, 108, 0.4);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(217, 184, 108, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.99), rgba(2, 6, 23, 0.98));
+}
+
+.travel-event-card .section-heading,
+.travel-event-card p {
+  margin: 0;
+}
+
+.travel-event-card .slot-list {
+  gap: 9px;
+}
+
+.travel-event-card .task-row {
+  border-color: rgba(94, 234, 212, 0.16);
+  background: rgba(11, 17, 27, 0.7);
+}
+
+.travel-event-card .task-copy small {
+  color: var(--gold);
+  line-height: 1.45;
+}
+
 .scene-card p {
   margin-top: 8px;
   color: #c8d7d0;
@@ -2818,14 +2941,171 @@ button.scene-hotspot-button:focus-visible {
 
 .combat-martial-row,
 .combat-method-row,
+.combat-tactics-row,
 .combat-artifact-row {
   display: grid;
   gap: 8px;
 }
 
 .combat-martial-row,
-.combat-method-row {
+.combat-method-row,
+.combat-tactics-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.combat-result-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px calc(18px + env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(7px);
+}
+
+.combat-result-card {
+  width: min(100%, 406px);
+  max-height: calc(100dvh - 32px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(94, 234, 212, 0.38);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(94, 234, 212, 0.18), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 34%),
+    rgba(10, 17, 27, 0.99);
+  box-shadow: 0 -18px 54px rgba(0, 0, 0, 0.56);
+}
+
+.combat-result-card.rank-elite {
+  border-color: rgba(167, 139, 250, 0.55);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(167, 139, 250, 0.2), transparent 40%),
+    rgba(10, 17, 27, 0.99);
+}
+
+.combat-result-card.rank-boss {
+  border-color: rgba(246, 196, 83, 0.66);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(246, 196, 83, 0.22), transparent 42%),
+    rgba(10, 17, 27, 0.99);
+  box-shadow:
+    0 -18px 54px rgba(0, 0, 0, 0.58),
+    0 0 30px rgba(246, 196, 83, 0.12);
+}
+
+.combat-result-card header {
+  display: grid;
+  gap: 5px;
+}
+
+.combat-result-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 22px;
+}
+
+.combat-result-card header p,
+.combat-result-defeat,
+.combat-result-empty {
+  color: #cbd5d1;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.combat-result-eyebrow {
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.combat-result-currencies {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.combat-result-currencies span {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.42);
+}
+
+.combat-result-currencies small {
+  color: var(--muted);
+}
+
+.combat-result-currencies strong {
+  color: #f8fafc;
+  font-size: 19px;
+}
+
+.combat-result-section {
+  display: grid;
+  gap: 7px;
+}
+
+.combat-result-section h3 {
+  color: #f4fbf7;
+  font-size: 14px;
+}
+
+.combat-result-materials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.combat-result-materials span {
+  padding: 6px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 7px;
+  color: #dbe9e2;
+  background: rgba(15, 23, 42, 0.52);
+  font-size: 12px;
+}
+
+.combat-result-equipment {
+  display: grid;
+  gap: 8px;
+}
+
+.combat-result-equipment article {
+  display: grid;
+  gap: 3px;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--grade-color) 58%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--grade-color) 10%, rgba(2, 6, 23, 0.8));
+}
+
+.combat-result-equipment article > * {
+  position: relative;
+  z-index: 1;
+}
+
+.combat-result-equipment small {
+  color: #d2ddd8;
+}
+
+.combat-result-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.combat-result-actions > * {
+  min-height: 46px;
 }
 
 .combat-artifact-row {
@@ -3201,7 +3481,7 @@ button.scene-hotspot-button:focus-visible {
 
   .map-controls {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
   }
 
   .map-controls button {
