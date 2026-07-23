@@ -16,7 +16,7 @@ export function TopStatus({ game, onExit }: { game: GameState; onExit: () => voi
             {realm.name}
           </span>
         </div>
-        <button className="icon-button" aria-label="返回主菜单" title="返回主菜单" onClick={onExit}>
+        <button className="icon-button" aria-label="保存并返回主菜单" title="保存并返回主菜单" onClick={onExit}>
           <GameIcon name="action-settings" size={18} />
         </button>
       </div>

@@ -64,6 +64,11 @@ export default function App() {
     }
   }
 
+  function exitGame() {
+    persistRootSave(rootSave);
+    setScreen("menu");
+  }
+
   return (
     <div className={`app-frame text-${rootSave.settings.textSize} ${rootSave.settings.motion ? "motion-on" : "motion-off"}`}>
       {screen === "menu" || !activeSlot ? (
@@ -75,7 +80,7 @@ export default function App() {
           onUpdateSettings={updateSettings}
         />
       ) : (
-        <GameScreen game={activeSlot.game} onChange={updateGame} onExit={() => setScreen("menu")} />
+        <GameScreen game={activeSlot.game} onChange={updateGame} onExit={exitGame} />
       )}
     </div>
   );

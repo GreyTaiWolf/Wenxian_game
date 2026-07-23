@@ -1,16 +1,20 @@
 import { useState } from "react";
 import "../mainQuest.css";
 import { attemptBreakthrough, cultivate, appendLog } from "../game/state";
+import { dismissCombatReport } from "../game/combatEngine";
+import { resolveTravelEventChoice } from "../game/travelEvents";
 import type { GameState, PrimaryModule } from "../types";
 import { BottomNav, isModuleUnlocked } from "./BottomNav";
 import CavePanel from "./CavePanel";
 import CombatView from "./CombatView";
+import CombatResultDialog from "./CombatResultDialog";
 import CultivationPanel from "./CultivationPanel";
 import ExplorePanel from "./ExplorePanel";
 import InventoryPanel from "./InventoryPanel";
 import MainQuestCard from "./MainQuestCard";
 import SectPanel from "./SectPanel";
 import { TopStatus } from "./TopStatus";
+import TravelEventDialog from "./TravelEventDialog";
 
 export default function GameScreen({
   game,
@@ -21,7 +25,7 @@ export default function GameScreen({
   onChange: (next: GameState | ((prev: GameState) => GameState)) => void;
   onExit: () => void;
 }) {
-  const [activeModule, setActiveModule] = useState<PrimaryModule>("cultivation");
+  const [activeModule, setActiveModule] = useState<PrimaryModule>(() => (game.world.activeTravel ? "explore" : "cultivation"));
 
   function selectModule(moduleId: PrimaryModule) {
     if (!isModuleUnlocked(game, moduleId)) {
@@ -55,6 +59,22 @@ export default function GameScreen({
         )}
       </section>
       <BottomNav game={game} activeModule={activeModule} onSelect={selectModule} />
+      {!game.combat && game.combatReport ? (
+        <CombatResultDialog
+          report={game.combatReport}
+          onDismiss={() => onChange((currentGame) => dismissCombatReport(currentGame))}
+          onOpenInventory={() => {
+            setActiveModule("inventory");
+            onChange((currentGame) => dismissCombatReport(currentGame));
+          }}
+        />
+      ) : null}
+      {!game.combat && game.world.pendingTravelEvent ? (
+        <TravelEventDialog
+          game={game}
+          onChoose={(choiceId) => onChange((currentGame) => resolveTravelEventChoice(currentGame, choiceId))}
+        />
+      ) : null}
     </main>
   );
 }

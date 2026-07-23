@@ -1,4 +1,6 @@
 import type { GridCell, GridCoord, GridDestinationZone, GridMapData, Vector2 } from "../types";
+import { WORLD_GRID_MAP_ID } from "../data/gridMaps";
+import { REGION_TILE_MOVE_HOURS, WORLD_TILE_MOVE_HOURS } from "../data/time";
 
 const cardinalDirections: GridCoord[] = [
   { x: 0, y: -1 },
@@ -158,6 +160,15 @@ export function findPathAStar(map: GridMapData, startCoord: GridCoord, targetCoo
 
 export function getPathMovementSteps(path: GridCoord[]): GridCoord[] {
   return path.slice(1);
+}
+
+export function getGridStepTravelHours(map: GridMapData, coord: GridCoord): number {
+  const baseHours = map.mapId === WORLD_GRID_MAP_ID ? WORLD_TILE_MOVE_HOURS : REGION_TILE_MOVE_HOURS;
+  return baseHours * Math.max(1, getGridCell(map, coord)?.movementCost ?? 1);
+}
+
+export function getGridPathTravelHours(map: GridMapData, movementSteps: GridCoord[]): number {
+  return movementSteps.reduce((total, coord) => total + getGridStepTravelHours(map, coord), 0);
 }
 
 export function validateGridPath(map: GridMapData, path: GridCoord[]): boolean {

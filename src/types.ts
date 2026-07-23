@@ -2,6 +2,7 @@ export type PrimaryModule = "cultivation" | "inventory" | "explore" | "cave" | "
 export type UnlockKey = PrimaryModule | "foundationSkills" | "pet" | "companion";
 export type QuestStatus = "available" | "accepted" | "completed";
 export type ActorKind = "player" | "companion" | "enemyCultivator" | "pet" | "beast";
+export type EnemyRank = "normal" | "elite" | "boss";
 export type SkillCategory = "cultivator" | "beast";
 export type TargetType = "enemySingle" | "enemyAll" | "allySingle" | "allyAll" | "self";
 export type EffectType = "damage" | "heal" | "shield" | "reduceDamage" | "restoreSpirit" | "control";
@@ -262,6 +263,31 @@ export interface GridNavigationState {
   positions: Record<string, GridCoord>;
 }
 
+export interface PendingTravelEvent {
+  eventId: string;
+  mapId: string;
+  destinationLabel: string;
+  stepCount: number;
+  triggeredAtTick: number;
+}
+
+export type GridTravelIntent =
+  | { kind: "free" }
+  | { kind: "province"; provinceId: string }
+  | { kind: "locationPreview"; regionId: string; locationId: string }
+  | { kind: "location"; regionId: string; locationId: string };
+
+export interface ActiveGridTravel {
+  mapId: string;
+  target: GridCoord;
+  path: GridCoord[];
+  totalSteps: number;
+  totalHours: number;
+  originLocationId: string;
+  intent: GridTravelIntent;
+  adjusted: boolean;
+}
+
 export interface WorldState {
   regionId: string;
   locationId: string;
@@ -294,6 +320,11 @@ export interface WorldState {
     questDeadlines: Record<string, number>;
   };
   navigation: GridNavigationState;
+  activeTravel: ActiveGridTravel | null;
+  pendingTravelEvent: PendingTravelEvent | null;
+  travelEventHistory: string[];
+  eventFlags: Record<string, number>;
+  encounterWins: Record<string, number>;
 }
 
 export interface CaveState {
@@ -337,6 +368,7 @@ export interface CombatState {
   id: string;
   groupId: string;
   title: string;
+  rank: EnemyRank;
   allies: CombatActor[];
   enemies: CombatActor[];
   turnOrder: string[];
@@ -346,12 +378,27 @@ export interface CombatState {
   rewards: CombatReward;
 }
 
+export interface CombatReport {
+  id: string;
+  groupId: string;
+  title: string;
+  rank: EnemyRank;
+  result: "victory" | "defeat";
+  firstClear: boolean;
+  cultivation: number;
+  spiritStones: number;
+  items: ItemAmount[];
+  equipment: EquipmentInstance[];
+  createdAt: string;
+}
+
 export interface GameState {
   player: PlayerState;
   inventory: InventoryState;
   world: WorldState;
   cave: CaveState;
   combat?: CombatState;
+  combatReport?: CombatReport;
 }
 
 export interface SaveSlot {
@@ -368,7 +415,7 @@ export interface SettingsState {
 }
 
 export interface RootSave {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   recentSlotId: string | null;
   settings: SettingsState;
   slots: Array<SaveSlot | null>;

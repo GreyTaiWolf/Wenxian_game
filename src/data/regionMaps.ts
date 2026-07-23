@@ -8,7 +8,6 @@ export interface RegionMapMarker {
 
 export interface RegionMapConfig {
   regionId: string;
-  imageKey: "nanjiang" | "zhongzhou";
   maxScale: number;
   markers: RegionMapMarker[];
 }
@@ -16,7 +15,6 @@ export interface RegionMapConfig {
 export const regionMaps: RegionMapConfig[] = [
   {
     regionId: "central",
-    imageKey: "zhongzhou",
     maxScale: 4,
     markers: [
       { locationId: "qingyun_city", x: 51, y: 48, recommendedRealm: "炼气初期", danger: "安全主城，可交易、接取任务并递交青云令牌入宗。" },
@@ -29,7 +27,6 @@ export const regionMaps: RegionMapConfig[] = [
   },
   {
     regionId: "south_ridge",
-    imageKey: "nanjiang",
     maxScale: 4,
     markers: [
       { locationId: "wuyao_alliance", x: 54, y: 25, recommendedRealm: "炼气后期", danger: "盟城安全，外来修士需守巫妖盟规矩。" },
